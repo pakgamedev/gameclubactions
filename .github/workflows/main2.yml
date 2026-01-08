@@ -65,15 +65,15 @@ jobs:
                   thread_name: game.name,
                   content: \`<@&${{ secrets.DEV_CLUB_ROLE_ID }}> Download the game. Play and analyze.\\nYou have til <t:\${unixTimestamp}:f> to review and discuss.\`,
                   embeds: [{
-                    title: \`🎮 Weekly Game: \${game.name}\`,
+                    title: \`🎮 Current Game: \${game.name}\`,
                     url: game.url,
                     color: 5814783,
                     image: { url: game.header_image },
                     thumbnail: { url: game.icon_url },
                     fields: [
-                      { name: 'Steam Link', value: \`[Click here to view](\${game.url})\` }
+                      { name: 'Link', value: \`[Click here to view](\${game.url})\` }
                     ],
-                    footer: { text: 'Weekly Random Selection' },
+                    footer: { text: 'Weekly Game' },
                     timestamp: new Date().toISOString()
                   }]
                 });
