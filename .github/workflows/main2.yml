@@ -51,7 +51,7 @@ jobs:
               });
 
               if (discordWebhookUrl) {
-                await axios.post(discordWebhookUrl, {
+                await axios.post(discordWebhookUrl + "?thread_name=${game.name}", {
                   embeds: [{
                     title: \`🎮 Weekly Game: \${game.name}\`,
                     url: game.url,
