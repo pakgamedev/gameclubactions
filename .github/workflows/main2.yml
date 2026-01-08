@@ -69,7 +69,6 @@ jobs:
 
                 await axios.post(discordWebhookUrl, {
                   thread_name: game.name,
-                  applied_tags: ['1455828972339331146'],
                   content: \`<@&${{ secrets.DEV_CLUB_ROLE_ID }}> Download the game. Play and analyze.\\nYou have til <t:\${unixTimestamp}:f> to review and discuss.\`,
                   embeds: [{
                     title: \`🎮 Current Game: \${game.name}\`,
