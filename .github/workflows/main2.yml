@@ -41,20 +41,26 @@ jobs:
               const snapshot = await db.collection(gamesColPath).get();
               if (snapshot.empty) return console.log('No games found.');
 
-              const games = [];
-              snapshot.forEach(doc => games.push(doc.data()));
-              const game = games[Math.floor(Math.random() * games.length)];
+              const docs = [];
+              snapshot.forEach(doc => docs.push(doc));
               
+              // Pick a random document
+              const selectedDoc = docs[Math.floor(Math.random() * docs.length)];
+              const game = selectedDoc.data();
+              
+              // 1. Set as current game
               await db.doc(currentDocPath).set({
                 ...game,
                 updated_at: admin.firestore.FieldValue.serverTimestamp()
               });
 
+              // 2. Delete from the pool of games
+              await selectedDoc.ref.delete();
+              console.log(\`Deleted \${game.name} from the games collection.\`);
+
               if (discordWebhookUrl) {
-                // Calculate next Sunday 11:00 PM PKT (18:00 UTC)
                 const now = new Date();
                 const sunday = new Date(now);
-                // day 0 is Sunday, so if today is Monday (1), we need to add 6 days
                 const daysUntilSunday = (7 - now.getUTCDay()) % 7;
                 sunday.setUTCDate(now.getUTCDate() + daysUntilSunday);
                 sunday.setUTCHours(18, 0, 0, 0);
@@ -80,7 +86,7 @@ jobs:
                 console.log('Posted to Discord successfully.');
               }
 
-              console.log(\`Selected: \${game.name}\`);
+              console.log(\`Selected and processed: \${game.name}\`);
             } catch (err) {
               console.error('Error:', err);
               process.exit(1);
