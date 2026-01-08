@@ -32,14 +32,32 @@ jobs:
           const appId = '${{ vars.APP_ID }}'; 
           const docPath = \`artifacts/\${appId}/public/data/current/game\`;
           
-          async function deleteDoc() {
+          async function archiveAndDelete() {
             try {
-              await db.doc(docPath).delete();
-              console.log('Successfully deleted:', docPath);
+              const docRef = db.doc(docPath);
+              const snapshot = await docRef.get();
+
+              if (snapshot.exists) {
+                const game = snapshot.data();
+                const pastPath = \`artifacts/\${appId}/public/data/past/\${game.doc_id}\`;
+                
+                // Set to past collection
+                await db.doc(pastPath).set({
+                  ...game,
+                  archived_at: admin.firestore.FieldValue.serverTimestamp()
+                });
+                console.log('Archived to:', pastPath);
+
+                // Delete current
+                await docRef.delete();
+                console.log('Successfully deleted:', docPath);
+              } else {
+                console.log('No document found at path:', docPath);
+              }
             } catch (err) {
-              console.error('Error deleting document:', err);
+              console.error('Error during archive/delete:', err);
               process.exit(1);
             }
           }
-          deleteDoc();
+          archiveAndDelete();
           "
