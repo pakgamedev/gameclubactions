@@ -1,0 +1,63 @@
+name: Pick Random Weekly Game
+
+on:
+  schedule:
+    # 9:00 AM PKT is 04:00 AM UTC
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+jobs:
+  pick-game:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase Admin
+        run: npm install firebase-admin
+
+      - name: Select and Set Random Game
+        run: |
+          node -e "
+          const admin = require('firebase-admin');
+          admin.initializeApp();
+          const db = admin.firestore();
+          const appId = '${{ vars.APP_ID }}';
+          
+          async function pickRandomGame() {
+            try {
+              const gamesColPath = \`artifacts/\${appId}/public/data/games\`;
+              const currentDocPath = \`artifacts/\${appId}/public/data/current/game\`;
+              
+              const snapshot = await db.collection(gamesColPath).get();
+              
+              if (snapshot.empty) {
+                console.log('No games found in collection.');
+                return;
+              }
+
+              const games = [];
+              snapshot.forEach(doc => games.push(doc.data()));
+              
+              const randomGame = games[Math.floor(Math.random() * games.length)];
+              
+              await db.doc(currentDocPath).set({
+                ...randomGame,
+                updated_at: admin.firestore.FieldValue.serverTimestamp()
+              });
+
+              console.log(\`Selected random game: \${randomGame.name}\`);
+            } catch (err) {
+              console.error('Error:', err);
+              process.exit(1);
+            }
+          }
+          pickRandomGame();
+          "
