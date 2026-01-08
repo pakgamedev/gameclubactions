@@ -20,44 +20,59 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Firebase Admin
-        run: npm install firebase-admin
+      - name: Install Dependencies
+        run: npm install firebase-admin axios
 
-      - name: Select and Set Random Game
+      - name: Select, Set and Post Random Game
         run: |
           node -e "
           const admin = require('firebase-admin');
+          const axios = require('axios');
           admin.initializeApp();
           const db = admin.firestore();
           const appId = '${{ vars.APP_ID }}';
+          const discordWebhookUrl = '${{ secrets.DISCORD_WEBHOOK_URL }}';
           
-          async function pickRandomGame() {
+          async function pickAndPost() {
             try {
               const gamesColPath = \`artifacts/\${appId}/public/data/games\`;
               const currentDocPath = \`artifacts/\${appId}/public/data/current/game\`;
               
               const snapshot = await db.collection(gamesColPath).get();
-              
-              if (snapshot.empty) {
-                console.log('No games found in collection.');
-                return;
-              }
+              if (snapshot.empty) return console.log('No games found.');
 
               const games = [];
               snapshot.forEach(doc => games.push(doc.data()));
-              
-              const randomGame = games[Math.floor(Math.random() * games.length)];
+              const game = games[Math.floor(Math.random() * games.length)];
               
               await db.doc(currentDocPath).set({
-                ...randomGame,
+                ...game,
                 updated_at: admin.firestore.FieldValue.serverTimestamp()
               });
 
-              console.log(\`Selected random game: \${randomGame.name}\`);
+              if (discordWebhookUrl) {
+                await axios.post(discordWebhookUrl, {
+                  embeds: [{
+                    title: \`🎮 Weekly Game: \${game.name}\`,
+                    url: game.url,
+                    color: 5814783,
+                    image: { url: game.header_image },
+                    thumbnail: { url: game.icon_url },
+                    fields: [
+                      { name: 'Steam Link', value: \`[Click here to view](\${game.url})\` }
+                    ],
+                    footer: { text: 'Weekly Random Selection' },
+                    timestamp: new Date().toISOString()
+                  }]
+                });
+                console.log('Posted to Discord successfully.');
+              }
+
+              console.log(\`Selected: \${game.name}\`);
             } catch (err) {
               console.error('Error:', err);
               process.exit(1);
             }
           }
-          pickRandomGame();
+          pickAndPost();
           "
