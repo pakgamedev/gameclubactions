@@ -51,8 +51,19 @@ jobs:
               });
 
               if (discordWebhookUrl) {
+                // Calculate next Sunday 11:00 PM PKT (18:00 UTC)
+                const now = new Date();
+                const sunday = new Date(now);
+                // day 0 is Sunday, so if today is Monday (1), we need to add 6 days
+                const daysUntilSunday = (7 - now.getUTCDay()) % 7;
+                sunday.setUTCDate(now.getUTCDate() + daysUntilSunday);
+                sunday.setUTCHours(18, 0, 0, 0);
+                
+                const unixTimestamp = Math.floor(sunday.getTime() / 1000);
+
                 await axios.post(discordWebhookUrl, {
                   thread_name: game.name,
+                  content: \`<@&${{ secrets.DEV_CLUB_ROLE_ID }}> Download the game. Play and analyze.\\nYou have til <t:\${unixTimestamp}:f> to review and discuss.\`,
                   embeds: [{
                     title: \`🎮 Weekly Game: \${game.name}\`,
                     url: game.url,
