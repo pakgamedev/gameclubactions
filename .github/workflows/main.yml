@@ -1,0 +1,45 @@
+name: Weekly Firestore Cleanup
+
+on:
+  schedule:
+    # 11:00 PM PKT is 18:00 (6:00 PM) UTC
+    - cron: '0 18 * * 0'
+  workflow_dispatch: # Allows manual triggering for testing
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase Admin
+        run: npm install firebase-admin
+
+      - name: Delete Firestore Document
+        run: |
+          node -e "
+          const admin = require('firebase-admin');
+          admin.initializeApp();
+          const db = admin.firestore();
+          const appId = '${{ vars.APP_ID }}'; 
+          const docPath = \`artifacts/\${appId}/public/data/current/game\`;
+          
+          async function deleteDoc() {
+            try {
+              await db.doc(docPath).delete();
+              console.log('Successfully deleted:', docPath);
+            } catch (err) {
+              console.error('Error deleting document:', err);
+              process.exit(1);
+            }
+          }
+          deleteDoc();
+          "
