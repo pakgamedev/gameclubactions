@@ -49,14 +49,14 @@ jobs:
               const game = selectedDoc.data();
               
               // 1. Set as current game
-              await db.doc(currentDocPath).set({
-                ...game,
-                updated_at: admin.firestore.FieldValue.serverTimestamp()
-              });
+              //await db.doc(currentDocPath).set({
+              //  ...game,
+              //  updated_at: admin.firestore.FieldValue.serverTimestamp()
+              //});
 
               // 2. Delete from the pool of games
-              await selectedDoc.ref.delete();
-              console.log(\`Deleted \${game.name} from the games collection.\`);
+              //await selectedDoc.ref.delete();
+              //console.log(\`Deleted \${game.name} from the games collection.\`);
 
               if (discordWebhookUrl) {
                 const now = new Date();
@@ -69,6 +69,7 @@ jobs:
 
                 await axios.post(discordWebhookUrl, {
                   thread_name: game.name,
+                  applied_tags: ['1455828972339331146'],
                   content: \`<@&${{ secrets.DEV_CLUB_ROLE_ID }}> Download the game. Play and analyze.\\nYou have til <t:\${unixTimestamp}:f> to review and discuss.\`,
                   embeds: [{
                     title: \`🎮 Current Game: \${game.name}\`,
