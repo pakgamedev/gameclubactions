@@ -7,7 +7,7 @@ require "cgi"
 # Configuration
 PROJECT_ID = "pakgamedev-com"
 APP_ID = "1:482266938106:web:bad5c2745289a25b246743"
-CREDENTIALS_PATH = "/home/adeel/Code/pakgamedev/gameclubtracker/initialdata/service.json"
+CREDENTIALS_PATH = "service.json"
 
 # Initialize Firestore
 firestore = Google::Cloud::Firestore.new(
