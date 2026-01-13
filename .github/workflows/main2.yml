@@ -2,8 +2,8 @@ name: Pick Random Weekly Game
 
 on:
   schedule:
-    # 9:00 AM PKT is 04:00 AM UTC
-    - cron: '0 4 * * 1'
+    # 7:00 AM PKT is 02:00 AM UTC
+    - cron: '0 2 * * 1'
   workflow_dispatch:
 
 jobs:
@@ -21,17 +21,22 @@ jobs:
           node-version: '20'
 
       - name: Install Dependencies
-        run: npm install firebase-admin axios
+        run: npm install firebase-admin discord.js
 
       - name: Select, Set and Post Random Game
         run: |
           node -e "
           const admin = require('firebase-admin');
-          const axios = require('axios');
+          const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+          
           admin.initializeApp();
           const db = admin.firestore();
+          
+          const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+          
           const appId = '${{ vars.APP_ID }}';
-          const discordWebhookUrl = '${{ secrets.DISCORD_WEBHOOK_URL }}';
+          const botToken = '${{ secrets.DISCORD_BOT_TOKEN }}';
+          const channelId = '${{ secrets.DISCORD_FORUM_CHANNEL_ID }}';
           
           async function pickAndPost() {
             try {
@@ -44,49 +49,51 @@ jobs:
               const docs = [];
               snapshot.forEach(doc => docs.push(doc));
               
-              // Pick a random document
               const selectedDoc = docs[Math.floor(Math.random() * docs.length)];
               const game = selectedDoc.data();
               
-              // 1. Set as current game
               await db.doc(currentDocPath).set({
                 ...game,
                 updated_at: admin.firestore.FieldValue.serverTimestamp()
               });
 
-              // 2. Delete from the pool of games
               await selectedDoc.ref.delete();
               console.log(\`Deleted \${game.name} from the games collection.\`);
 
-              if (discordWebhookUrl) {
+              await client.login(botToken);
+              
+              client.once('ready', async () => {
+                const channel = await client.channels.fetch(channelId);
+                
                 const now = new Date();
                 const sunday = new Date(now);
                 const daysUntilSunday = (7 - now.getUTCDay()) % 7;
                 sunday.setUTCDate(now.getUTCDate() + daysUntilSunday);
                 sunday.setUTCHours(18, 0, 0, 0);
-                
                 const unixTimestamp = Math.floor(sunday.getTime() / 1000);
 
-                await axios.post(discordWebhookUrl, {
-                  thread_name: game.name,
-                  content: \`Download the game. Play and analyze.\\nYou have til <t:\${unixTimestamp}:f> to review and discuss.\`,
-                  embeds: [{
-                    title: \`🎮 Current Game: \${game.name}\`,
-                    url: game.url,
-                    color: 5814783,
-                    image: { url: game.header_image },
-                    thumbnail: { url: game.icon_url },
-                    fields: [
-                      { name: 'Link', value: \`[Click here to view](\${game.url})\` }
-                    ],
-                    footer: { text: 'Weekly Game' },
-                    timestamp: new Date().toISOString()
-                  }]
-                });
-                console.log('Posted to Discord successfully.');
-              }
+                const embed = new EmbedBuilder()
+                  .setTitle(\`🎮 Current Game: \${game.name}\`)
+                  .setURL(game.url)
+                  .setColor(5814783)
+                  .setImage(game.header_image)
+                  .setThumbnail(game.icon_url)
+                  .addFields({ name: 'Link', value: \`[Click here to view](\${game.url})\` })
+                  .setFooter({ text: 'Weekly Game' })
+                  .setTimestamp();
 
-              console.log(\`Selected and processed: \${game.name}\`);
+                await channel.threads.create({
+                  name: game.name,
+                  appliedTags: ['1455828972339331146'],
+                  message: {
+                    content: \`<@&${{ secrets.DEV_CLUB_ROLE_ID }}> Download the game. Play and analyze.\\nYou have til <t:\${unixTimestamp}:f> to review and discuss.\`,
+                    embeds: [embed]
+                  }
+                });
+
+                console.log('Posted via Discord Bot successfully.');
+                client.destroy();
+              });
             } catch (err) {
               console.error('Error:', err);
               process.exit(1);
