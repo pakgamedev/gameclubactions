@@ -52,12 +52,12 @@ jobs:
               const selectedDoc = docs[Math.floor(Math.random() * docs.length)];
               const game = selectedDoc.data();
               
-              await db.doc(currentDocPath).set({
-                ...game,
-                updated_at: admin.firestore.FieldValue.serverTimestamp()
-              });
+              //await db.doc(currentDocPath).set({
+              //  ...game,
+              //  updated_at: admin.firestore.FieldValue.serverTimestamp()
+              //});
 
-              await selectedDoc.ref.delete();
+              //await selectedDoc.ref.delete();
               console.log(\`Deleted \${game.name} from the games collection.\`);
 
               await client.login(botToken);
