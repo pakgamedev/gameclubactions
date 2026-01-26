@@ -125,3 +125,5 @@ jobs:
           EOF
 
       - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          file_pattern: 'reddit-auto-post/post.json'
