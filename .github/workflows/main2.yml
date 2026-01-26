@@ -9,7 +9,10 @@ on:
 jobs:
   pick-game:
     runs-on: ubuntu-latest
+
     steps:
+      - uses: actions/checkout@v4
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -23,81 +26,116 @@ jobs:
       - name: Install Dependencies
         run: npm install firebase-admin discord.js
 
-      - name: Select, Set and Post Random Game
+      - name: Select Game, Post Discord, Generate Reddit Content
+        env:
+          APP_ID: ${{ vars.APP_ID }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_FORUM_CHANNEL_ID: ${{ secrets.DISCORD_FORUM_CHANNEL_ID }}
+          DEV_CLUB_ROLE_ID: ${{ secrets.DEV_CLUB_ROLE_ID }}
         run: |
-          node -e "
+          node <<'EOF'
+          const fs = require('fs');
           const admin = require('firebase-admin');
           const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-          
+
           admin.initializeApp();
           const db = admin.firestore();
-          
+
           const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-          
-          const appId = '${{ vars.APP_ID }}';
-          const botToken = '${{ secrets.DISCORD_BOT_TOKEN }}';
-          const channelId = '${{ secrets.DISCORD_FORUM_CHANNEL_ID }}';
-          
-          async function pickAndPost() {
-            try {
-              const gamesColPath = \`artifacts/\${appId}/public/data/games\`;
-              const currentDocPath = \`artifacts/\${appId}/public/data/current/game\`;
-              
-              const snapshot = await db.collection(gamesColPath).get();
-              if (snapshot.empty) return console.log('No games found.');
 
-              const docs = [];
-              snapshot.forEach(doc => docs.push(doc));
-              
-              const selectedDoc = docs[Math.floor(Math.random() * docs.length)];
-              const game = selectedDoc.data();
-              
-              await db.doc(currentDocPath).set({
-                ...game,
-                updated_at: admin.firestore.FieldValue.serverTimestamp()
-              });
+          const {
+            APP_ID,
+            DISCORD_BOT_TOKEN,
+            DISCORD_FORUM_CHANNEL_ID,
+            DEV_CLUB_ROLE_ID
+          } = process.env;
 
-              await selectedDoc.ref.delete();
-              console.log(\`Deleted \${game.name} from the games collection.\`);
+          async function run() {
+            const gamesColPath = `artifacts/${APP_ID}/public/data/games`;
+            const currentDocPath = `artifacts/${APP_ID}/public/data/current/game`;
 
-              await client.login(botToken);
-              
-              client.once('ready', async () => {
-                const channel = await client.channels.fetch(channelId);
-                
-                const now = new Date();
-                const sunday = new Date(now);
-                const daysUntilSunday = (7 - now.getUTCDay()) % 7;
-                sunday.setUTCDate(now.getUTCDate() + daysUntilSunday);
-                sunday.setUTCHours(18, 0, 0, 0);
-                const unixTimestamp = Math.floor(sunday.getTime() / 1000);
-
-                const embed = new EmbedBuilder()
-                  .setTitle(\`🎮 Current Game: \${game.name}\`)
-                  .setURL(game.url)
-                  .setColor(5814783)
-                  .setImage(game.header_image)
-                  .setThumbnail(game.icon_url)
-                  .addFields({ name: 'Link', value: \`[Click here to view](\${game.url})\` })
-                  .setFooter({ text: 'Weekly Game' })
-                  .setTimestamp();
-
-                await channel.threads.create({
-                  name: game.name,
-                  appliedTags: ['1455828972339331146'],
-                  message: {
-                    content: \`<@&${{ secrets.DEV_CLUB_ROLE_ID }}> Download the game. Play and analyze.\\nYou have til <t:\${unixTimestamp}:f> to review and discuss.\`,
-                    embeds: [embed]
-                  }
-                });
-
-                console.log('Posted via Discord Bot successfully.');
-                client.destroy();
-              });
-            } catch (err) {
-              console.error('Error:', err);
-              process.exit(1);
+            const snapshot = await db.collection(gamesColPath).get();
+            if (snapshot.empty) {
+              console.log('No games found');
+              return;
             }
+
+            const docs = snapshot.docs;
+            const selectedDoc = docs[Math.floor(Math.random() * docs.length)];
+            const game = selectedDoc.data();
+
+            //await db.doc(currentDocPath).set({
+            //  ...game,
+            //  updated_at: admin.firestore.FieldValue.serverTimestamp()
+            //});
+
+            //await selectedDoc.ref.delete();
+
+            /* ---------- REDDIT CONTENT ---------- */
+
+            const post = {
+              title: `Weekly Game: ${game.name}`,
+              body: `
+🎮 **This Week's Game:** ${game.name}
+
+🔗 ${game.url}
+
+Play the game, analyze it, and share your thoughts.
+Focus on mechanics, UI, progression, and overall design.
+
+Assets:
+- Header: ${game.header_image}
+- Icon: ${game.icon_url}
+              `.trim()
+            };
+
+            fs.writeFileSync('reddit-auto-post/post.json', JSON.stringify(post, null, 2));
+
+            /* ---------- DISCORD POST ---------- */
+
+            await client.login(DISCORD_BOT_TOKEN);
+
+            client.once('ready', async () => {
+              const channel = await client.channels.fetch(DISCORD_FORUM_CHANNEL_ID);
+
+              const now = new Date();
+              const sunday = new Date(now);
+              const daysUntilSunday = (7 - now.getUTCDay()) % 7;
+              sunday.setUTCDate(now.getUTCDate() + daysUntilSunday);
+              sunday.setUTCHours(18, 0, 0, 0);
+              const unixTimestamp = Math.floor(sunday.getTime() / 1000);
+
+              const embed = new EmbedBuilder()
+                .setTitle(`🎮 Current Game: ${game.name}`)
+                .setURL(game.url)
+                .setImage(game.header_image)
+                .setThumbnail(game.icon_url)
+                .addFields({ name: 'Link', value: `[Click here](${game.url})` })
+                .setFooter({ text: 'Weekly Game' })
+                .setTimestamp();
+
+              await channel.threads.create({
+                name: game.name,
+                message: {
+                  content: `<@&${DEV_CLUB_ROLE_ID}> Download the game and discuss.\nDeadline: <t:${unixTimestamp}:f>`,
+                  embeds: [embed]
+                }
+              });
+
+              client.destroy();
+            });
           }
-          pickAndPost();
-          "
+
+          run().catch(err => {
+            console.error(err);
+            process.exit(1);
+          });
+          EOF
+
+      - name: Commit Reddit post.json
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add reddit-auto-post/post.json
+          git commit -m "Weekly Reddit post content" || exit 0
+          git push
