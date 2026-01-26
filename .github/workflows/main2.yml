@@ -75,18 +75,7 @@ jobs:
 
             const post = {
               title: `Weekly Game: ${game.name}`,
-              body: `
-🎮 **This Week's Game:** ${game.name}
-
-🔗 ${game.url}
-
-Play the game, analyze it, and share your thoughts.
-Focus on mechanics, UI, progression, and overall design.
-
-Assets:
-- Header: ${game.header_image}
-- Icon: ${game.icon_url}
-              `.trim()
+              body: `🎮 **This Week's Game:** ${game.name}\n\n🔗 ${game.url}`.trim()
             };
 
             fs.writeFileSync('reddit-auto-post/post.json', JSON.stringify(post, null, 2));
