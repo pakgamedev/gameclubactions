@@ -1,0 +1,54 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "pak-game-dev-app",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "entry": "index.html",
+        "height": "regular",
+        "inline": true
+      }
+    }
+  },
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "permissions": {
+    "http": {
+      "enable": true,
+      "domains": ["raw.githubusercontent.com", "pakgamedev.com"]
+    },
+    "reddit": true
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Run scheduled task now",
+        "description": "Manually trigger the GitHub post task",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/weekly-game"
+      },
+      {
+        "label": "Create Post",
+        "description": "Creates the main post",
+        "forUserType": "moderator",
+        "location": "subreddit",
+        "endpoint": "/internal/menu/create-post"
+      }
+    ]
+  },
+  "scheduler": {
+    "tasks": {
+      "weekly-game": {
+        "endpoint": "/internal/scheduler/weekly-game",
+        "cron": "0 5 * * 1"
+      }
+    }
+  },
+  "dev": {
+    "subreddit": "pak_game_dev_app_dev"
+  }
+}
