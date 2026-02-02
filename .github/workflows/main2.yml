@@ -78,7 +78,8 @@ jobs:
 
             const post = {
               title: `We are playing ${game.name} - Weekly Game Dev Club`,
-              body: `Game Dev Club is a weekly activity where community is encouraged to try new games, analyze them from a game dev perspective, review them and discuss them on our discord (link in the sidebar)\n\n\nAs Stephen King says \"If you want to be a writer, you must do two things above all others: read a lot and write a lot.\" We have adopted it for our craft and we aim to Play a lot of games and Make a lot of games.\n\n\nThis week we are playing ${game.name}. Everyone have until 11pm Sunday to play, review and discuss the game.`.trim()
+              body: `Game Dev Club is a weekly activity where community is encouraged to try new games, analyze them from a game dev perspective, review them and discuss them on our discord (link in the sidebar)\n\n\nAs Stephen King says \"If you want to be a writer, you must do two things above all others: read a lot and write a lot.\" We have adopted it for our craft and we aim to Play a lot of games and Make a lot of games.\n\n\nThis week we are playing ${game.name}. Everyone have until 11pm Sunday to play, review and discuss the game.`.trim(),
+              header_image: game.header_image
             };
 
             fs.writeFileSync('reddit-auto-post/post.json', JSON.stringify(post, null, 2));
