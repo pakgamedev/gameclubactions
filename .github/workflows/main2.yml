@@ -67,12 +67,12 @@ jobs:
             const selectedDoc = docs[Math.floor(Math.random() * docs.length)];
             const game = selectedDoc.data();
 
-            //await db.doc(currentDocPath).set({
-            //  ...game,
-            //  updated_at: admin.firestore.FieldValue.serverTimestamp()
-            //});
+            await db.doc(currentDocPath).set({
+              ...game,
+              updated_at: admin.firestore.FieldValue.serverTimestamp()
+            });
 
-            //await selectedDoc.ref.delete();
+            await selectedDoc.ref.delete();
 
             /* ---------- REDDIT CONTENT ---------- */
 
@@ -106,13 +106,13 @@ jobs:
                 .setFooter({ text: 'Weekly Game' })
                 .setTimestamp();
 
-              //await channel.threads.create({
-              //  name: game.name,
-              //  message: {
-              //    content: `<@&${DEV_CLUB_ROLE_ID}> Download the game and discuss.\nDeadline: <t:${unixTimestamp}:f>`,
-              //    embeds: [embed]
-              //  }
-              //});
+              await channel.threads.create({
+                name: game.name,
+                message: {
+                  content: `<@&${DEV_CLUB_ROLE_ID}> Download the game and discuss.\nDeadline: <t:${unixTimestamp}:f>`,
+                  embeds: [embed]
+                }
+              });
 
               client.destroy();
             });
