@@ -67,8 +67,8 @@ if url.nil? || url.strip.empty?
   url = gets.chomp
 end
 
-if user_url.include?("itch.io")
-  data = scrape_itch_game(user_url)
+if url.include?("itch.io")
+  data = scrape_itch_game(url)
   save_to_firestore(firestore, APP_ID, data) if data
 else
   puts "Invalid Itch.io URL."
