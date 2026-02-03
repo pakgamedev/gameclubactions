@@ -7,7 +7,7 @@ require "cgi"
 # Configuration
 PROJECT_ID = "pakgamedev-com"
 APP_ID = "1:482266938106:web:bad5c2745289a25b246743"
-CREDENTIALS_PATH = "service.json"
+CREDENTIALS_PATH = __dir__ + "/service.json"
 
 # Initialize Firestore with hardcoded credentials path
 firestore = Google::Cloud::Firestore.new(
@@ -65,8 +65,12 @@ def save_to_firestore(firestore, app_id, game_data)
   puts "Successfully saved #{game_data[:name]} to Firestore."
 end
 
-puts "Enter Steam URL\n"
-url = gets.chomp
+url = ARGV[0]
+
+if url.nil? || url.strip.empty?
+  puts "Enter Steam URL: "
+  url = gets.chomp
+end
 
 data = scrape_steam_game(url)
 save_to_firestore(firestore, APP_ID, data) if data

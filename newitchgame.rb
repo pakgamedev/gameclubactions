@@ -7,7 +7,7 @@ require "cgi"
 # Configuration
 PROJECT_ID = "pakgamedev-com"
 APP_ID = "1:482266938106:web:bad5c2745289a25b246743"
-CREDENTIALS_PATH = "service.json"
+CREDENTIALS_PATH = __dir__ + "/service.json"
 
 # Initialize Firestore
 firestore = Google::Cloud::Firestore.new(
@@ -60,9 +60,12 @@ def save_to_firestore(firestore, app_id, game_data)
   puts "Successfully saved #{game_data[:name]} to Firestore."
 end
 
-# Interaction
-print "Enter Itch.io Game URL: "
-user_url = gets.chomp
+url = ARGV[0]
+
+if url.nil? || url.strip.empty?
+  puts "Enter Itch URL: "
+  url = gets.chomp
+end
 
 if user_url.include?("itch.io")
   data = scrape_itch_game(user_url)
