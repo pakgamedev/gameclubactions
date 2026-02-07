@@ -50,7 +50,8 @@ jobs:
             APP_ID,
             DISCORD_BOT_TOKEN,
             DISCORD_FORUM_CHANNEL_ID,
-            DEV_CLUB_ROLE_ID
+            DEV_CLUB_ROLE_ID,
+            DISCORD_ANNOUNCE_CHANNEL_ID
           } = process.env;
 
           async function run() {
@@ -107,13 +108,23 @@ jobs:
                 .setFooter({ text: 'Weekly Game' })
                 .setTimestamp();
 
-              await channel.threads.create({
+              const thread = await channel.threads.create({
                 name: game.name,
                 message: {
                   content: `<@&${DEV_CLUB_ROLE_ID}> Download the game and discuss.\nDeadline: <t:${unixTimestamp}:f>`,
                   embeds: [embed]
                 }
               });
+
+              const announceChannel = await client.channels.fetch(DISCORD_ANNOUNCE_CHANNEL_ID);
+
+              const forumChannelLink = `https://discord.com/channels/${thread.guildId}/${DISCORD_FORUM_CHANNEL_ID}`;
+              const threadLink = `https://discord.com/channels/${thread.guildId}/${thread.id}`;
+
+              await announceChannel.send(
+                `Check out the latest game in ${forumChannelLink} : ${threadLink}\n` +
+                `To join the club: https://discord.com/channels/1263723973603102802/1263854846038249532/1455471838833541262`
+              );
 
               client.destroy();
             });
