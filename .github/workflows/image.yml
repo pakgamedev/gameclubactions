@@ -39,6 +39,7 @@ jobs:
               
               // 2. Fetch Random Image from Unsplash
               let imageBuffer = null;
+              let description = null;
               async function fetchImage(query) {
                 try {
                   const unsplashRes = await axios.get('https://api.unsplash.com/photos/random', {
@@ -57,7 +58,7 @@ jobs:
                   return null;
                 }
               }
-              let { imageBuffer, description } = await fetchImage(word);
+              { imageBuffer, description } = await fetchImage(word);
               
               // Fallback to 'activity' if first attempt failed
               if (!imageBuffer) {
