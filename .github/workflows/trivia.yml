@@ -3,7 +3,7 @@ name: Daily Doodling Exercise
 on:
   schedule:
     # Runs at 12:00 PM PKT (07:00 AM UTC) every Thursday
-    - cron: '0 15 * * 4'
+    - cron: '0 7 * * *'
   workflow_dispatch:
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
                   return null;
                 }
               }
-              imageBuffer = await fetchImage('sketch book');
+              imageBuffer = await fetchImage('blank sketchbook');
 
               // 3. Setup Discord Bot
               const client = new Client({ intents: [GatewayIntentBits.Guilds] });
