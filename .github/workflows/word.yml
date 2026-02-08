@@ -65,8 +65,8 @@ jobs:
               
               // Fallback to 'board game' if first attempt failed
               if (!imageBuffer) {
-                console.log(\`No image found for '\${word}', falling back to 'board game'\`);
-                imageBuffer = await fetchImage('board game');
+                console.log(\`No image found for '\${word}', falling back to 'game design'\`);
+                imageBuffer = await fetchImage('game design');
               }
 
               // 3. Setup Discord Bot
