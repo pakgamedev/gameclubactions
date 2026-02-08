@@ -36,7 +36,30 @@ jobs:
                 .replace(/&amp;/g, '&');
               const correctAnswer = trivia.correct_answer;
 
-              // 2. Setup Discord Bot
+              // 2. Fetch Random Image from Unsplash
+              let imageBuffer = null;
+              async function fetchImage(query) {
+                try {
+                  const unsplashRes = await axios.get('https://api.unsplash.com/photos/random', {
+                    params: { 
+                      query: query, 
+                      orientation: 'landscape',
+                      content_filter: 'high'
+                    },
+                    headers: { 'Authorization': \`Client-ID \${{ secrets.UNSPLASH_ACCESS_KEY }}\` }
+                  });
+                  
+                  const imageDownload = await axios.get(unsplashRes.data.urls.regular, {
+                    responseType: 'arraybuffer'
+                  });
+                  return Buffer.from(imageDownload.data);
+                } catch (e) {
+                  return null;
+                }
+              }
+              imageBuffer = await fetchImage('sketch book');
+
+              // 3. Setup Discord Bot
               const client = new Client({ intents: [GatewayIntentBits.Guilds] });
               await client.login('${{ secrets.DISCORD_BOT_TOKEN }}');
 
@@ -48,13 +71,23 @@ jobs:
                   \`Today's Doodling Exercise Prompt:\\n\\n\` +
                   \`**\${question}**\\n\\n\` +
                   \`Do a quick and fun doodle inspired by this statement. Interpret it literally, metaphorically, or creatively.\\n\\n\` + 
-                  \`That's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game idea!\`;
+                  \`That's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details!\`;
 
+                const messagePayload = {
+                  content: content
+                };
+
+                if (imageBuffer) {
+                  messagePayload.files = [{
+                    attachment: imageBuffer,
+                    name: 'exercise_image.jpg'
+                  }];
+                }
 
                 await channel.threads.create({
                   name: title,
                   appliedTags: ['1469714038719250462'],
-                  message: { content }
+                  message: messagePayload
                 });
 
                 console.log('Doodling exercise posted');
