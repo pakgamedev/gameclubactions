@@ -42,17 +42,31 @@ jobs:
 
               // 2. Fetch Random Image from Unsplash
               let imageBuffer = null;
-              try {
-                const unsplashRes = await axios.get('https://api.unsplash.com/photos/random', {
-                  params: { query: word, orientation: 'landscape', content_filter: 'high' },
-                  headers: { 'Authorization': \`Client-ID \${{ secrets.UNSPLASH_ACCESS_KEY }}\` }
-                });
-                const imageDownload = await axios.get(unsplashRes.data.urls.regular, {
-                  responseType: 'arraybuffer'
-                });
-                imageBuffer = Buffer.from(imageDownload.data);
-              } catch (e) {
-                console.log('Unsplash image fetch failed, proceeding without image.');
+              async function fetchImage(query) {
+                try {
+                  const unsplashRes = await axios.get('https://api.unsplash.com/photos/random', {
+                    params: { 
+                      query: query, 
+                      orientation: 'landscape',
+                      content_filter: 'high'
+                    },
+                    headers: { 'Authorization': \`Client-ID \${{ secrets.UNSPLASH_ACCESS_KEY }}\` }
+                  });
+                  
+                  const imageDownload = await axios.get(unsplashRes.data.urls.regular, {
+                    responseType: 'arraybuffer'
+                  });
+                  return Buffer.from(imageDownload.data);
+                } catch (e) {
+                  return null;
+                }
+              }
+              imageBuffer = await fetchImage(word);
+              
+              // Fallback to 'board game' if first attempt failed
+              if (!imageBuffer) {
+                console.log(\`No image found for '\${word}', falling back to 'board game'\`);
+                imageBuffer = await fetchImage('board game');
               }
 
               // 3. Setup Discord Bot
