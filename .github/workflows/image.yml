@@ -52,17 +52,17 @@ jobs:
                   const imageDownload = await axios.get(unsplashRes.data.urls.regular, {
                     responseType: 'arraybuffer'
                   });
-                  return Buffer.from(imageDownload.data);
+                  return {buffer: Buffer.from(imageDownload.data), description: unsplashRes.data.description};
                 } catch (e) {
                   return null;
                 }
               }
-              imageBuffer = await fetchImage(word);
+              let { imageBuffer, description } = await fetchImage(word);
               
               // Fallback to 'activity' if first attempt failed
               if (!imageBuffer) {
                 console.log(\`No image found for '\${word}', falling back to 'activity'\`);
-                imageBuffer = await fetchImage('activity');
+                { imageBuffer, description } = await fetchImage('activity');
               }
 
               // 3. Setup Discord Bot
@@ -72,7 +72,7 @@ jobs:
               client.once('ready', async () => {
                 const channel = await client.channels.fetch('${{ secrets.DISCORD_TEST_FORUM_CHANNEL_ID }}');
                 
-                const title = \`Game Idea Exercise | Today's Image'\`;
+                const title = \`Game Idea Exercise | Today's Image '\${description}'\`;
                 const content = \`You are challenged to come up with one or more game ideas about today's image.\\n\\nThat's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game idea!\`;
 
                 const messagePayload = {
@@ -88,7 +88,7 @@ jobs:
 
                 await channel.threads.create({
                   name: title,
-                  appliedTags: ['1469713938911461629'],
+                  appliedTags: ['1469713995555668188'],
                   message: messagePayload
                 });
 
