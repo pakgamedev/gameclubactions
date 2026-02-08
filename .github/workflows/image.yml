@@ -58,12 +58,16 @@ jobs:
                   return null;
                 }
               }
-              { imageBuffer, description } = await fetchImage(word);
+              const result = await fetchImage(word);
+              imageBuffer = result.imageBuffer;
+              description = result.description;
               
               // Fallback to 'activity' if first attempt failed
               if (!imageBuffer) {
                 console.log(\`No image found for '\${word}', falling back to 'activity'\`);
-                { imageBuffer, description } = await fetchImage('activity');
+                const fallback = await fetchImage('activity');
+                imageBuffer = fallback.imageBuffer;
+                description = fallback.description;
               }
 
               // 3. Setup Discord Bot
