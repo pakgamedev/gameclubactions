@@ -40,7 +40,19 @@ jobs:
                 ? results.map(r => \`• \${r.definition}\`).join('\\n') 
                 : 'No definitions found.';
 
-              // 2. Setup Discord Bot
+              // 2. Fetch Random Image from Unsplash
+              let imageUrl = null;
+              try {
+                const unsplashRes = await axios.get('https://api.unsplash.com/photos/random', {
+                  params: { query: word, orientation: 'landscape' },
+                  headers: { 'Authorization': \`Client-ID \${{ secrets.UNSPLASH_ACCESS_KEY }}\` }
+                });
+                imageUrl = unsplashRes.data.urls.regular;
+              } catch (e) {
+                console.log('Unsplash image fetch failed, proceeding without image.');
+              }
+
+              // 3. Setup Discord Bot
               const client = new Client({ intents: [GatewayIntentBits.Guilds] });
               await client.login('${{ secrets.DISCORD_BOT_TOKEN }}');
 
@@ -50,10 +62,18 @@ jobs:
                 const title = \`Game Theme Exercise | Today's Word '\${word.toUpperCase()}'\`;
                 const content = \`You are challenged to come up with one or more game themes about today's word.\\n\\n**\${word.toUpperCase()}**\\n\${definitions}\\n\\nThat's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game theme!\`;
 
+                const messagePayload = {
+                  content: content
+                };
+
+                if (imageUrl) {
+                  messagePayload.files = [imageUrl];
+                }
+
                 await channel.threads.create({
                   name: title,
                   appliedTags: ['1469713938911461629'],
-                  message: { content: content }
+                  message: messagePayload
                 });
 
                 console.log(\`Exercise posted for word: \${word}\`);
