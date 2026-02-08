@@ -53,9 +53,10 @@ jobs:
                   const imageDownload = await axios.get(unsplashRes.data.urls.regular, {
                     responseType: 'arraybuffer'
                   });
-                  return {imageBuffer: Buffer.from(imageDownload.data), description: unsplashRes.data.description};
+                  console.log(unsplashRes.data);
+                  return {imageBuffer: Buffer.from(imageDownload.data), description: unsplashRes.data.description || unsplashRes.data.alt_description || null};
                 } catch (e) {
-                  return null;
+                  return { imageBuffer: null, description: null };
                 }
               }
               const result = await fetchImage(word);
