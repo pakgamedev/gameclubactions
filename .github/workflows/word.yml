@@ -47,7 +47,7 @@ jobs:
                   params: { query: word, orientation: 'landscape', content_filter: 'high' },
                   headers: { 'Authorization': \`Client-ID \${{ secrets.UNSPLASH_ACCESS_KEY }}\` }
                 });
-                imageUrl = unsplashRes.data.urls.regular;
+                imageUrl = unsplashRes.data.urls.regular + '&.jpg';
               } catch (e) {
                 console.log('Unsplash image fetch failed, proceeding without image.');
               }
