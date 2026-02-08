@@ -110,6 +110,7 @@ jobs:
 
               const thread = await channel.threads.create({
                 name: game.name,
+                appliedTags: ['1455828972339331146'],
                 message: {
                   content: `<@&${DEV_CLUB_ROLE_ID}> Download the game and discuss.\nDeadline: <t:${unixTimestamp}:f>`,
                   embeds: [embed]

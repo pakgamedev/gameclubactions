@@ -1,4 +1,4 @@
-name: Daily Game Idea Exercise
+name: Daily Game Theme Exercise
 
 on:
   schedule:
@@ -47,11 +47,12 @@ jobs:
               client.once('ready', async () => {
                 const channel = await client.channels.fetch('${{ secrets.DISCORD_TEST_FORUM_CHANNEL_ID }}');
                 
-                const title = \`Game Idea Exercise | Today's Word '\${word}'\`;
-                const content = \`You are challenged to come up with one or more game ideas about today's word.\\n\\n**\${word.toUpperCase()}**\\n\${definitions}\\n\\nThat's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game idea!\`;
+                const title = \`Game Theme Exercise | Today's Word '\${word.toUpperCase()}'\`;
+                const content = \`You are challenged to come up with one or more game themes about today's word.\\n\\n**\${word.toUpperCase()}**\\n\${definitions}\\n\\nThat's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game theme!\`;
 
                 await channel.threads.create({
                   name: title,
+                  appliedTags: ['1469713938911461629'],
                   message: { content: content }
                 });
 
