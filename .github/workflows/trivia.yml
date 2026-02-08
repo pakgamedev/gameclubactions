@@ -45,7 +45,7 @@ jobs:
                 const title = 'Doodling Exercise | ${correctAnswer.toUpperCase()}} Trivia';
                 const content =
                   `Today's Doodling Exercise Prompt:\\n\\n` +
-                  `** ${question}**\\n\\n` +
+                  `**\${question}**\\n\\n` +
                   `Do a quick and fun doodle inspired by this statement. Interpret it literally, metaphorically, or creatively.\\n\\n` + 
                   'That's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game idea!\`;
 
