@@ -76,7 +76,7 @@ jobs:
               await client.login('${{ secrets.DISCORD_BOT_TOKEN }}');
 
               client.once('ready', async () => {
-                const channel = await client.channels.fetch('${{ secrets.DISCORD_TEST_FORUM_CHANNEL_ID }}');
+                const channel = await client.channels.fetch('${{ secrets.DISCORD_FORUM_CHANNEL_ID }}');
                 
                 const title = \`Game Idea Exercise | Today's Image\`;
                 const content = \`You are challenged to come up with one or more game ideas about today's image.\\n\\n**\${description.toUpperCase()}**\\n\\nAdditional Prompt: **\${word.toUpperCase()}**\\n\\n\` + 
