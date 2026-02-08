@@ -74,7 +74,7 @@ jobs:
                 const channel = await client.channels.fetch('${{ secrets.DISCORD_TEST_FORUM_CHANNEL_ID }}');
                 
                 const title = \`Game Idea Exercise | Today's Image '\${description}'\`;
-                const content = \`You are challenged to come up with one or more game ideas about today's image.\\n\\nThat's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game idea!\`;
+                const content = \`You are challenged to come up with one or more game ideas about today's image.\\n\\n**${description}**\\n\\nThat's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game idea!\`;
 
                 const messagePayload = {
                   content: content
