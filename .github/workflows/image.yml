@@ -1,9 +1,9 @@
-name: Daily Game Theme Exercise
+name: Weekly Game Idea Exercise
 
 on:
   schedule:
     # Runs at 12:00 PM PKT (07:00 AM UTC) daily
-    - cron: '0 0 20 * * 2'
+    - cron: '0 7 * * *'
   workflow_dispatch:
 
 jobs:
@@ -26,9 +26,9 @@ jobs:
 
           async function run() {
             try {
-              // 1. Fetch Random Verb
+              // 1. Fetch Random Noun
               const wordResponse = await axios.get('https://wordsapiv1.p.rapidapi.com/words/', {
-                params: { random: 'true', partOfSpeech: 'verb' },
+                params: { random: 'true', partOfSpeech: 'noun' },
                 headers: {
                   'x-rapidapi-host': 'wordsapiv1.p.rapidapi.com',
                   'x-rapidapi-key': '${{ secrets.RAPIDAPI_KEY }}'
@@ -36,18 +36,14 @@ jobs:
               });
 
               const { word, results } = wordResponse.data;
-              const definitions = results 
-                ? results.map(r => \`• \${r.definition}\`).join('\\n') 
-                : 'No definitions found.';
-
+              
               // 2. Fetch Random Image from Unsplash
               let imageBuffer = null;
               async function fetchImage(query) {
                 try {
                   const unsplashRes = await axios.get('https://api.unsplash.com/photos/random', {
                     params: { 
-                      query: query, 
-                      orientation: 'landscape',
+                      query: query,
                       content_filter: 'high'
                     },
                     headers: { 'Authorization': \`Client-ID \${{ secrets.UNSPLASH_ACCESS_KEY }}\` }
@@ -63,10 +59,10 @@ jobs:
               }
               imageBuffer = await fetchImage(word);
               
-              // Fallback to 'game design' if first attempt failed
+              // Fallback to 'activity' if first attempt failed
               if (!imageBuffer) {
-                console.log(\`No image found for '\${word}', falling back to 'game design'\`);
-                imageBuffer = await fetchImage('game design');
+                console.log(\`No image found for '\${word}', falling back to 'activity'\`);
+                imageBuffer = await fetchImage('activity');
               }
 
               // 3. Setup Discord Bot
@@ -74,10 +70,10 @@ jobs:
               await client.login('${{ secrets.DISCORD_BOT_TOKEN }}');
 
               client.once('ready', async () => {
-                const channel = await client.channels.fetch('${{ secrets.DISCORD_FORUM_CHANNEL_ID }}');
+                const channel = await client.channels.fetch('${{ secrets.DISCORD_TEST_FORUM_CHANNEL_ID }}');
                 
-                const title = \`Game Theme Exercise | Today's Word '\${word.toUpperCase()}'\`;
-                const content = \`You are challenged to come up with one or more game themes about today's word.\\n\\n**\${word.toUpperCase()}**\\n\${definitions}\\n\\nThat's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game theme!\`;
+                const title = \`Game Idea Exercise | Today's Image'\`;
+                const content = \`You are challenged to come up with one or more game ideas about today's image.\\n\\nThat's it. Put your answers in the comments below!\\n\\n---\\nCheck https://discord.com/channels/1263723973603102802/1469711211158310992 for details on what counts as a game idea!\`;
 
                 const messagePayload = {
                   content: content
