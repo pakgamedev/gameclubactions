@@ -64,7 +64,7 @@ jobs:
               await client.login('${{ secrets.DISCORD_BOT_TOKEN }}');
 
               client.once('ready', async () => {
-                const channel = await client.channels.fetch('${{ secrets.DISCORD_TEST_FORUM_CHANNEL_ID }}');
+                const channel = await client.channels.fetch('${{ secrets.DISCORD_FORUM_CHANNEL_ID }}');
 
                 const title = \`Doodling Exercise | \${correctAnswer.toUpperCase()} Trivia\`;
                 const content =
