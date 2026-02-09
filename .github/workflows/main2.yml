@@ -35,6 +35,7 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_FORUM_CHANNEL_ID: ${{ secrets.DISCORD_FORUM_CHANNEL_ID }}
           DEV_CLUB_ROLE_ID: ${{ secrets.DEV_CLUB_ROLE_ID }}
+          DISCORD_ANNOUNCE_CHANNEL_ID: ${{ secrets.DISCORD_ANNOUNCE_CHANNEL_ID }}
         run: |
           node <<'EOF'
           const fs = require('fs');
@@ -127,6 +128,8 @@ jobs:
                 `To join the club: https://discord.com/channels/1263723973603102802/1263854846038249532/1455471838833541262`
               );
 
+              fs.writeFileSync('.github/workflows/current_thread_id', thread.id, 'utf8');
+
               client.destroy();
             });
           }
@@ -139,4 +142,6 @@ jobs:
 
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          file_pattern: 'reddit-auto-post/post.json'
+          file_pattern: |
+            reddit-auto-post/post.json
+            .github/workflows/current_thread_id

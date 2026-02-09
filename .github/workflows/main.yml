@@ -10,6 +10,8 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -20,8 +22,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Firebase Admin
-        run: npm install firebase-admin
+      - name: Install Dependencies
+        run: npm install firebase-admin discord.js
 
       - name: Delete Firestore Document
         run: |
@@ -61,3 +63,35 @@ jobs:
           }
           archiveAndDelete();
           "
+      - name: Update Discord Thread Tag
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const { Client, GatewayIntentBits } = require('discord.js');
+
+          const THREAD_ID = fs.readFileSync(
+            '.github/workflows/current_thread_id',
+            'utf8'
+          ).trim();
+
+          const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+          async function run() {
+            await client.login(process.env.DISCORD_BOT_TOKEN);
+
+            const thread = await client.channels.fetch(THREAD_ID);
+
+            await thread.setAppliedTags([
+              '1455828886805024942'
+            ]);
+
+            client.destroy();
+          }
+
+          run().catch(err => {
+            console.error(err);
+            process.exit(1);
+          });
+          EOF
