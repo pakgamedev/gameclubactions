@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        PakGameDev Weekly Game Post
 // @namespace   https://pakgamedev.com/gameclub
-// @version     7.5
+// @version     7.6
 // @description Fills weekly Game Dev Club Reddit IMAGE post via r-post-media-input.addFiles
 // @author      PakGameDev
 // @match       https://www.reddit.com/r/PakGameDev/submit*
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '7.5';
+  const VERSION = '7.6';
   const POST_JSON =
     'https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -131,6 +131,19 @@
     return { buf, type, name, bytes: buf.byteLength };
   }
 
+  function arrayBufferToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    const chunk = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(
+        null,
+        bytes.subarray(i, Math.min(i + chunk, bytes.length))
+      );
+    }
+    return btoa(binary);
+  }
+
   function getMediaHost() {
     return (
       document.querySelector('r-post-media-input#post-composer_media') ||
@@ -150,134 +163,93 @@
     return text.includes('remove media');
   }
 
-  function unwrap(el) {
-    return el && el.wrappedJSObject ? el.wrappedJSObject : el;
-  }
-
-  function makeFileFromBuffer(buf, name, type) {
-    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-    const errors = [];
-
-    // Prefer a page-compartment File (Greasemonkey X-ray safe). No eval.
-    try {
-      if (typeof unsafeWindow !== 'undefined' && unsafeWindow.File) {
-        const pageBytes =
-          typeof cloneInto === 'function' ? cloneInto(u8, unsafeWindow) : u8;
-        const opts =
-          typeof cloneInto === 'function'
-            ? cloneInto({ type: type }, unsafeWindow)
-            : { type: type };
-        return new unsafeWindow.File([pageBytes], name, opts);
-      }
-    } catch (e) {
-      errors.push('unsafeWindow.File: ' + (e.message || e));
+  function readPageNonce() {
+    for (const s of document.querySelectorAll('script')) {
+      if (s.nonce) return s.nonce;
     }
-
-    try {
-      return new File([u8], name, { type: type });
-    } catch (e) {
-      errors.push('File: ' + (e.message || e));
-      throw new Error(errors.join(' | '));
-    }
-  }
-
-  function callAddFiles(host, file) {
-    const before =
-      typeof host.mediaLength === 'number' ? host.mediaLength : 0;
-    const raw = unwrap(host);
-    const fn = raw && typeof raw.addFiles === 'function' ? raw.addFiles : host.addFiles;
-    if (typeof fn !== 'function') {
-      return { ok: false, error: 'addFiles missing on media host' };
-    }
-
-    let ret;
-    try {
-      ret = fn.call(raw || host, [file]);
-    } catch (e1) {
-      try {
-        // Some GM builds want the array cloned into the page compartment.
-        const list =
-          typeof cloneInto === 'function'
-            ? cloneInto([file], unsafeWindow, { cloneFunctions: false })
-            : [file];
-        ret = fn.call(raw || host, list);
-      } catch (e2) {
-        return {
-          ok: false,
-          error: String(e2 && e2.message ? e2.message : e2),
-        };
-      }
-    }
-
-    const after =
-      typeof host.mediaLength === 'number' ? host.mediaLength : before;
-    const ok = ret === true || after > before;
-    return {
-      ok,
-      error: ok ? null : 'addFiles returned false (file rejected?)',
-    };
-  }
-
-  function assignViaFileInput(host, file) {
-    const root = host.shadowRoot;
-    if (!root) return { ok: false, error: 'no shadowRoot' };
-    const input = root.querySelector('input.file-input, input[type="file"]');
-    if (!input) return { ok: false, error: 'no file input' };
-
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    try {
-      input.files = dt.files;
-    } catch (_) {
-      try {
-        Object.defineProperty(input, 'files', {
-          configurable: true,
-          get: () => dt.files,
-        });
-      } catch (e) {
-        return { ok: false, error: 'cannot set input.files: ' + (e.message || e) };
-      }
-    }
-
-    // Prefer the component handler (avoids instanceof HTMLInputElement X-ray traps).
-    try {
-      if (typeof host.handleInput === 'function') {
-        host.handleInput({ target: unwrap(input) || input });
-      }
-    } catch (_) {}
-
-    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-
-    const after =
-      typeof host.mediaLength === 'number' ? host.mediaLength : 0;
-    return {
-      ok: after > 0 || mediaPreviewReady(host),
-      error: null,
-    };
+    return null;
   }
 
   /**
-   * Reddit accepts media through r-post-media-input.addFiles().
-   * Do not use unsafeWindow.Function / eval: Reddit CSP blocks it.
+   * Reddit CSP blocks eval/Function and sandboxed File fails addFiles.
+   * Reuse the page script nonce so an inline script can call addFiles in page JS.
    */
-  function attachFileToReddit(host, buf, name, type) {
-    const file = makeFileFromBuffer(buf, name, type);
-    const attempts = [];
+  function attachViaNonceScript(b64, name, type) {
+    const nonce = readPageNonce();
+    if (!nonce) {
+      return Promise.reject(new Error('Could not read Reddit script nonce'));
+    }
 
-    let result = callAddFiles(host, file);
-    attempts.push('addFiles: ' + (result.ok ? 'ok' : result.error));
-    if (result.ok) return { ok: true, error: null, attempts };
+    const eventName = 'pkgd-cover-done-' + Date.now();
+    const holderId = 'pkgd-cover-b64-' + Date.now();
 
-    result = assignViaFileInput(host, file);
-    attempts.push('fileInput: ' + (result.ok ? 'ok' : result.error || 'no preview'));
-    if (result.ok) return { ok: true, error: null, attempts };
+    return new Promise((resolve, reject) => {
+      const holder = document.createElement('textarea');
+      holder.id = holderId;
+      holder.style.display = 'none';
+      holder.value = b64;
+      document.documentElement.appendChild(holder);
 
-    return {
-      ok: false,
-      error: attempts.join(' | '),
-      attempts,
-    };
+      const cleanup = () => {
+        try {
+          holder.remove();
+        } catch (_) {}
+        try {
+          script.remove();
+        } catch (_) {}
+      };
+
+      const timer = setTimeout(() => {
+        window.removeEventListener(eventName, onDone);
+        cleanup();
+        reject(new Error('Nonce script timed out'));
+      }, 8000);
+
+      function onDone(ev) {
+        clearTimeout(timer);
+        window.removeEventListener(eventName, onDone);
+        cleanup();
+        const detail = ev.detail || {};
+        if (detail.error) reject(new Error(detail.error));
+        else if (!detail.ok) reject(new Error('addFiles returned false from page script'));
+        else resolve(detail);
+      }
+
+      window.addEventListener(eventName, onDone);
+
+      const script = document.createElement('script');
+      script.nonce = nonce;
+      script.textContent =
+        '(function(){try{' +
+        'var b64=document.getElementById("' +
+        holderId +
+        '").value;' +
+        'var name=' +
+        JSON.stringify(name) +
+        ';' +
+        'var type=' +
+        JSON.stringify(type) +
+        ';' +
+        'var bin=atob(b64);' +
+        'var arr=new Uint8Array(bin.length);' +
+        'for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);' +
+        'var file=new File([arr],name,{type:type});' +
+        'var host=document.querySelector("r-post-media-input#post-composer_media")||document.querySelector("r-post-media-input");' +
+        'if(!host||typeof host.addFiles!=="function")throw new Error("r-post-media-input.addFiles missing");' +
+        'if(typeof host.clear==="function"&&host.mediaLength>0){try{host.clear();}catch(e){}}' +
+        'var before=typeof host.mediaLength==="number"?host.mediaLength:0;' +
+        'var ret=host.addFiles([file]);' +
+        'var after=typeof host.mediaLength==="number"?host.mediaLength:before;' +
+        'var ok=ret===true||after>before;' +
+        'window.dispatchEvent(new CustomEvent("' +
+        eventName +
+        '",{detail:{ok:ok,before:before,after:after}}));' +
+        '}catch(e){window.dispatchEvent(new CustomEvent("' +
+        eventName +
+        '",{detail:{error:String(e&&e.message?e.message:e)}}));}})();';
+
+      document.documentElement.appendChild(script);
+    });
   }
 
   async function attachCoverAsImageMedia(imageUrl, setStatus) {
@@ -290,20 +262,10 @@
     host.scrollIntoView({ block: 'center', behavior: 'instant' });
     await sleep(300);
 
-    if (typeof host.clear === 'function' && mediaPreviewReady(host)) {
-      try {
-        host.clear();
-        await sleep(400);
-      } catch (_) {}
-    }
-
     setStatus('Attaching cover…');
-    const result = attachFileToReddit(host, buf, name, type);
+    const b64 = arrayBufferToBase64(buf);
+    const result = await attachViaNonceScript(b64, name, type);
     console.log('[PakGameDev]', VERSION, 'attach result', result);
-
-    if (!result.ok) {
-      throw new Error(result.error || 'attach failed');
-    }
 
     await waitFor(() => mediaPreviewReady(host), 'media preview after addFiles', {
       timeout: 8000,
