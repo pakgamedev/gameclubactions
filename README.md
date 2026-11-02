@@ -8,8 +8,8 @@ Public board: [pakgamedev.com/club](https://pakgamedev.com/club)
 
 | When | What |
 |------|------|
-| **Mon ~7:00 AM** | Pick highest-voted queued game → `current/game`, open Discord forum thread, announce, generate covers + outreach package, Bluesky + LinkedIn Page posts |
-| **Mon morning (manual)** | Reddit IMAGE post via Greasemonkey; paste IG / TikTok / YouTube from `outreach/weekly.md` |
+| **Mon ~7:00 AM** | Pick highest-voted queued game → `current/game`, open Discord forum thread, announce, generate covers + outreach package, Bluesky post |
+| **Mon morning (manual)** | Reddit IMAGE post via Greasemonkey; paste LinkedIn / IG / TikTok / YouTube from `outreach/weekly.md` |
 | **Sun 11:00 PM** | Archive `current/game` → `past/`, retag Discord thread as done |
 
 Between Sunday archive and Monday pick the club page shows “Next game is being chosen.”
@@ -59,32 +59,17 @@ Cover generation: `scripts/build_weekly_cover.py` (Pillow). Runs inside the Mond
 
 Bluesky posts automatically when `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD` secrets are set.
 
-LinkedIn Organization Page posts automatically when LinkedIn secrets are set (see below). Instagram / TikTok / YouTube stay paste-from-`weekly.md`.
+Instagram / LinkedIn / TikTok / YouTube stay paste-from-`weekly.md`.
 
-### LinkedIn (Organization Page)
+### LinkedIn (paste for now)
 
-Posts the weekly cover + long caption as the **Page** (not a personal profile).
+LinkedIn’s **Community Management API** (needed to post as a Company Page) is only approved for **registered legal entities** (LLC, corp, etc.), not individuals or informal communities. PakGameDev does not qualify today, so LinkedIn is **manual**:
 
-1. Create a [LinkedIn developer app](https://www.linkedin.com/developers/apps) under the PakGameDev Page admin account.
-2. Request **Community Management API** (or equivalent product that grants `w_organization_social`).
-3. Auth → add redirect URL `http://localhost:8765/callback`.
-4. Mint tokens locally:
+1. Use `outreach/weekly-cover.png` (or the CDN URL in `weekly.md`).
+2. Paste the LinkedIn body from `outreach/weekly.md` / `outreach/linkedin.json`.
+3. Post as the Page from the LinkedIn UI.
 
-```bash
-LINKEDIN_CLIENT_ID=… LINKEDIN_CLIENT_SECRET=… node scripts/linkedin-oauth-setup.js
-```
-
-5. Add GitHub Actions secrets:
-
-| Secret | Required | Notes |
-|--------|----------|-------|
-| `LINKEDIN_ORGANIZATION_ID` | yes | Numeric id from `linkedin.com/company/NNNNNNN/admin/` |
-| `LINKEDIN_CLIENT_ID` | for refresh | App client id |
-| `LINKEDIN_CLIENT_SECRET` | for refresh | App client secret |
-| `LINKEDIN_REFRESH_TOKEN` | preferred | From the helper (when LinkedIn returns one) |
-| `LINKEDIN_ACCESS_TOKEN` | fallback | Used if refresh is unavailable |
-
-6. Test: Actions → **Test Club Outreach Channels** → channel `linkedin`.
+`scripts/post-linkedin.js` and the Monday / test workflow hooks remain in the repo but **no-op without secrets**. If PakGameDev later has a registered entity and LinkedIn approves Community Management, mint tokens with `scripts/linkedin-oauth-setup.js` and add the `LINKEDIN_*` secrets documented in that script’s header.
 
 ### Reddit (no Devvit)
 
