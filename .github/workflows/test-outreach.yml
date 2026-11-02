@@ -1,0 +1,87 @@
+name: Test Club Outreach Channels
+
+# Manual only. Posts test messages to Discord/Bluesky and builds the
+# share package. Does NOT read or write Firestore (queue / current / past).
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Which channel(s) to test
+        required: true
+        type: choice
+        options:
+          - discord
+          - bluesky
+          - package
+          - reddit
+          - all
+        default: discord
+      game_name:
+        description: Game display name for the test post
+        required: true
+        type: string
+        default: Ballionaire
+      game_url:
+        description: Store page URL
+        required: true
+        type: string
+        default: https://store.steampowered.com/app/2667120/Ballionaire/
+      header_image:
+        description: Header / cover art URL
+        required: true
+        type: string
+        default: https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/2667120/header.jpg
+
+jobs:
+  test-outreach:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        if: inputs.channel != 'discord'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          npm install discord.js
+          if [ "${{ inputs.channel }}" != "discord" ]; then
+            pip install Pillow
+          fi
+
+      - name: Run outreach test
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_FORUM_CHANNEL_ID: ${{ secrets.DISCORD_FORUM_CHANNEL_ID }}
+          DEV_CLUB_ROLE_ID: ${{ secrets.DEV_CLUB_ROLE_ID }}
+          DISCORD_ANNOUNCE_CHANNEL_ID: ${{ secrets.DISCORD_ANNOUNCE_CHANNEL_ID }}
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+        run: |
+          node scripts/test-outreach.js \
+            --channel="${{ inputs.channel }}" \
+            --name="${{ inputs.game_name }}" \
+            --url="${{ inputs.game_url }}" \
+            --header="${{ inputs.header_image }}"
+
+      - name: Upload generated package artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: outreach-test-package
+          path: |
+            outreach/weekly-cover.png
+            outreach/weekly.md
+            outreach/bluesky.json
+            reddit-auto-post/post.json
+          if-no-files-found: ignore
