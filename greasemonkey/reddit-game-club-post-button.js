@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         PakGameDev Weekly Game Post
-// @namespace    http://tampermonkey.net/
-// @version      7.2
-// @description  Fills weekly Game Dev Club Reddit IMAGE post (cover drop onto r-post-media-input)
-// @author       PakGameDev
-// @match        https://www.reddit.com/r/PakGameDev/submit*
-// @grant        none
+// @name        PakGameDev Weekly Game Post
+// @namespace   https://pakgamedev.com/gameclub
+// @version     7.2
+// @description Fills weekly Game Dev Club Reddit IMAGE post (cover drop onto r-post-media-input)
+// @author      PakGameDev
+// @match       https://www.reddit.com/r/PakGameDev/submit*
+// @grant       none
+// @run-at      document-idle
 // ==/UserScript==
 
 (function () {
