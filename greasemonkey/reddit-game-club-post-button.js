@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        PakGameDev Weekly Game Post
 // @namespace   https://pakgamedev.com/gameclub
-// @version     7.7
+// @version     7.8
 // @description Fills weekly Game Dev Club Reddit IMAGE post via r-post-media-input.addFiles
 // @author      PakGameDev
 // @match       https://www.reddit.com/r/PakGameDev/submit*
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '7.7';
+  const VERSION = '7.8';
   const POST_JSON =
     'https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -116,6 +116,64 @@
   }
 
   /**
+   * Modern Reddit composer keeps type=TEXT even when the URL says type=IMAGE.
+   * Media uploads then sit on a 0x0 hidden slot. Force IMAGE so the dropzone shows.
+   */
+  function forceImagePostTypeInPage() {
+    const nonce = readPageNonce();
+    if (!nonce) return Promise.reject(new Error('Could not read Reddit script nonce'));
+
+    const eventName = 'pkgd-type-done-' + Date.now();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        window.removeEventListener(eventName, onDone);
+        reject(new Error('Switching to IMAGE type timed out'));
+      }, 10000);
+
+      function onDone(ev) {
+        clearTimeout(timer);
+        window.removeEventListener(eventName, onDone);
+        try {
+          script.remove();
+        } catch (_) {}
+        const detail = ev.detail || {};
+        if (detail.error) reject(new Error(detail.error));
+        else resolve(detail);
+      }
+
+      window.addEventListener(eventName, onDone);
+      const script = document.createElement('script');
+      script.nonce = nonce;
+      script.textContent =
+        '(async function(){' +
+        'var eventName=' +
+        JSON.stringify(eventName) +
+        ';' +
+        'function done(d){window.dispatchEvent(new CustomEvent(eventName,{detail:d}));}' +
+        'try{' +
+        'var typeInput=document.getElementById("post-composer_type");' +
+        'if(!typeInput)throw new Error("post-composer_type missing");' +
+        'var desc=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value");' +
+        'desc.set.call(typeInput,"IMAGE");' +
+        'typeInput.dispatchEvent(new Event("input",{bubbles:true,composed:true}));' +
+        'typeInput.dispatchEvent(new Event("change",{bubbles:true,composed:true}));' +
+        'var host=document.querySelector("r-post-media-input#post-composer_media")||document.querySelector("r-post-media-input");' +
+        'var visible=false; var h=0;' +
+        'for(var i=0;i<20;i++){' +
+        'await new Promise(function(r){setTimeout(r,150);});' +
+        'if(typeInput.value!=="IMAGE")desc.set.call(typeInput,"IMAGE");' +
+        'h=host?host.getBoundingClientRect().height:0;' +
+        'if(h>40){visible=true;break;}' +
+        '}' +
+        'if(host)host.scrollIntoView({block:"center",behavior:"instant"});' +
+        'done({ok:true,type:typeInput.value,mediaHeight:h,visible:visible});' +
+        '}catch(e){done({error:String(e&&e.message?e.message:e)});}' +
+        '})();';
+      document.documentElement.appendChild(script);
+    });
+  }
+
+  /**
    * Load the cover in page JS (Image + canvas) and call addFiles there.
    * Avoids Greasemonkey binary/File compartment issues. Uses Reddit's script nonce
    * so the inline script is allowed by CSP.
@@ -133,7 +191,7 @@
       const timer = setTimeout(() => {
         window.removeEventListener(eventName, onDone);
         reject(new Error('Page cover attach timed out'));
-      }, 20000);
+      }, 25000);
 
       function onDone(ev) {
         clearTimeout(timer);
@@ -148,8 +206,12 @@
             new Error(
               'Cover did not stick (ctrl=' +
                 detail.afterCtrl +
-                ', preview=' +
-                detail.hasRemove +
+                ', value=' +
+                detail.hasValue +
+                ', type=' +
+                detail.type +
+                ', mediaH=' +
+                detail.mediaHeight +
                 ')'
             )
           );
@@ -171,6 +233,13 @@
         'var url=' +
         JSON.stringify(url) +
         ';' +
+        'var typeInput=document.getElementById("post-composer_type");' +
+        'var desc=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value");' +
+        'function forceImage(){if(!typeInput)return; desc.set.call(typeInput,"IMAGE"); typeInput.dispatchEvent(new Event("input",{bubbles:true,composed:true})); typeInput.dispatchEvent(new Event("change",{bubbles:true,composed:true}));}' +
+        'forceImage();' +
+        'var host=document.querySelector("r-post-media-input#post-composer_media")||document.querySelector("r-post-media-input");' +
+        'if(!host||typeof host.addFiles!=="function")throw new Error("r-post-media-input.addFiles missing");' +
+        'for(var wait=0; wait<20; wait++){ if(host.getBoundingClientRect().height>40)break; forceImage(); await new Promise(function(r){setTimeout(r,150);}); }' +
         'var img=new Image();' +
         'img.crossOrigin="anonymous";' +
         'await new Promise(function(res,rej){img.onload=res;img.onerror=function(){rej(new Error("Cover image failed to load"));};img.src=url;});' +
@@ -180,21 +249,25 @@
         'c.getContext("2d").drawImage(img,0,0);' +
         'var blob=await new Promise(function(res,rej){c.toBlob(function(b){b?res(b):rej(new Error("toBlob failed"));},"image/png");});' +
         'var file=new File([blob],"weekly-cover.png",{type:"image/png"});' +
-        'var host=document.querySelector("r-post-media-input#post-composer_media")||document.querySelector("r-post-media-input");' +
-        'if(!host||typeof host.addFiles!=="function")throw new Error("r-post-media-input.addFiles missing");' +
+        'forceImage();' +
         'host.scrollIntoView({block:"center",behavior:"instant"});' +
         'var before=host._mediaController?host._mediaController.media.length:0;' +
         'if(before>0&&typeof host.clear==="function"){try{host.clear();}catch(e){} await new Promise(function(r){setTimeout(r,400);}); before=host._mediaController?host._mediaController.media.length:0;}' +
         'var ret=host.addFiles([file]);' +
-        'var ready=false; var afterCtrl=0; var hasRemove=false;' +
-        'for(var i=0;i<40;i++){' +
+        'var ready=false; var afterCtrl=0; var hasValue=false; var status="";' +
+        'for(var i=0;i<60;i++){' +
         'await new Promise(function(r){setTimeout(r,250);});' +
+        'forceImage();' +
         'afterCtrl=host._mediaController?host._mediaController.media.length:0;' +
-        'hasRemove=((host.shadowRoot&&host.shadowRoot.textContent)||"").toLowerCase().indexOf("remove media")!==-1;' +
-        'var hasBlob=[].slice.call((host.shadowRoot&&host.shadowRoot.querySelectorAll("img"))||[]).some(function(im){return (im.src||"").indexOf("blob:")===0;});' +
-        'if(afterCtrl>before||hasRemove||hasBlob){ready=true;break;}' +
+        'var item=host._mediaController&&host._mediaController.media[0];' +
+        'status=item&&item.status||"";' +
+        'hasValue=!!(host.value&&host.value!=="[]");' +
+        'if(afterCtrl>0&&(hasValue||status==="success")){ready=true;break;}' +
+        'if(afterCtrl===0&&i>8)break;' +
         '}' +
-        'done({ok:ready,ret:!!ret,before:before,afterCtrl:afterCtrl,hasRemove:hasRemove,bytes:blob.size,w:img.naturalWidth,h:img.naturalHeight});' +
+        'forceImage();' +
+        'var mediaHeight=host.getBoundingClientRect().height;' +
+        'done({ok:ready&&mediaHeight>40,ret:!!ret,before:before,afterCtrl:afterCtrl,hasValue:hasValue,status:status,type:typeInput?typeInput.value:null,mediaHeight:mediaHeight,bytes:blob.size,w:img.naturalWidth,h:img.naturalHeight});' +
         '}catch(e){done({error:String(e&&e.message?e.message:e)});}' +
         '})();';
 
@@ -203,6 +276,10 @@
   }
 
   async function attachCoverAsImageMedia(imageUrl, setStatus) {
+    setStatus('Switching to IMAGE…');
+    const typeInfo = await forceImagePostTypeInPage();
+    console.log('[PakGameDev]', VERSION, 'type switch', typeInfo);
+
     setStatus('Finding uploader…');
     const host = await waitFor(getMediaHost, 'r-post-media-input');
     host.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -212,10 +289,14 @@
     const result = await attachCoverInPage(imageUrl);
     console.log('[PakGameDev]', VERSION, 'attach result', result);
 
-    await waitFor(() => mediaPreviewReady(host), 'media preview after addFiles', {
-      timeout: 8000,
-      interval: 250,
-    });
+    await waitFor(
+      () =>
+        mediaPreviewReady(host) &&
+        host.getBoundingClientRect().height > 40 &&
+        !!(host.value && host.value !== '[]'),
+      'visible uploaded media preview',
+      { timeout: 10000, interval: 250 }
+    );
   }
 
   function getTitleTextarea() {
@@ -313,6 +394,8 @@
         await attachCoverAsImageMedia(imageUrl, setStatus);
         setStatus('Filling text…');
         await fillText(data);
+        // Body focus can flip modern composer back to TEXT and hide the media slot.
+        await forceImagePostTypeInPage();
         setStatus('Done - review & post');
       } catch (err) {
         console.error('[PakGameDev]', err);
