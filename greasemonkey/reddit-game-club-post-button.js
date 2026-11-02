@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        PakGameDev Weekly Game Post
 // @namespace   https://pakgamedev.com/gameclub
-// @version     7.4
+// @version     7.5
 // @description Fills weekly Game Dev Club Reddit IMAGE post via r-post-media-input.addFiles
 // @author      PakGameDev
 // @match       https://www.reddit.com/r/PakGameDev/submit*
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '7.4';
+  const VERSION = '7.5';
   const POST_JSON =
     'https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -131,19 +131,6 @@
     return { buf, type, name, bytes: buf.byteLength };
   }
 
-  function arrayBufferToBase64(buf) {
-    const bytes = new Uint8Array(buf);
-    const chunk = 0x8000;
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(
-        null,
-        bytes.subarray(i, Math.min(i + chunk, bytes.length))
-      );
-    }
-    return btoa(binary);
-  }
-
   function getMediaHost() {
     return (
       document.querySelector('r-post-media-input#post-composer_media') ||
@@ -163,57 +150,134 @@
     return text.includes('remove media');
   }
 
+  function unwrap(el) {
+    return el && el.wrappedJSObject ? el.wrappedJSObject : el;
+  }
+
+  function makeFileFromBuffer(buf, name, type) {
+    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+    const errors = [];
+
+    // Prefer a page-compartment File (Greasemonkey X-ray safe). No eval.
+    try {
+      if (typeof unsafeWindow !== 'undefined' && unsafeWindow.File) {
+        const pageBytes =
+          typeof cloneInto === 'function' ? cloneInto(u8, unsafeWindow) : u8;
+        const opts =
+          typeof cloneInto === 'function'
+            ? cloneInto({ type: type }, unsafeWindow)
+            : { type: type };
+        return new unsafeWindow.File([pageBytes], name, opts);
+      }
+    } catch (e) {
+      errors.push('unsafeWindow.File: ' + (e.message || e));
+    }
+
+    try {
+      return new File([u8], name, { type: type });
+    } catch (e) {
+      errors.push('File: ' + (e.message || e));
+      throw new Error(errors.join(' | '));
+    }
+  }
+
+  function callAddFiles(host, file) {
+    const before =
+      typeof host.mediaLength === 'number' ? host.mediaLength : 0;
+    const raw = unwrap(host);
+    const fn = raw && typeof raw.addFiles === 'function' ? raw.addFiles : host.addFiles;
+    if (typeof fn !== 'function') {
+      return { ok: false, error: 'addFiles missing on media host' };
+    }
+
+    let ret;
+    try {
+      ret = fn.call(raw || host, [file]);
+    } catch (e1) {
+      try {
+        // Some GM builds want the array cloned into the page compartment.
+        const list =
+          typeof cloneInto === 'function'
+            ? cloneInto([file], unsafeWindow, { cloneFunctions: false })
+            : [file];
+        ret = fn.call(raw || host, list);
+      } catch (e2) {
+        return {
+          ok: false,
+          error: String(e2 && e2.message ? e2.message : e2),
+        };
+      }
+    }
+
+    const after =
+      typeof host.mediaLength === 'number' ? host.mediaLength : before;
+    const ok = ret === true || after > before;
+    return {
+      ok,
+      error: ok ? null : 'addFiles returned false (file rejected?)',
+    };
+  }
+
+  function assignViaFileInput(host, file) {
+    const root = host.shadowRoot;
+    if (!root) return { ok: false, error: 'no shadowRoot' };
+    const input = root.querySelector('input.file-input, input[type="file"]');
+    if (!input) return { ok: false, error: 'no file input' };
+
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    try {
+      input.files = dt.files;
+    } catch (_) {
+      try {
+        Object.defineProperty(input, 'files', {
+          configurable: true,
+          get: () => dt.files,
+        });
+      } catch (e) {
+        return { ok: false, error: 'cannot set input.files: ' + (e.message || e) };
+      }
+    }
+
+    // Prefer the component handler (avoids instanceof HTMLInputElement X-ray traps).
+    try {
+      if (typeof host.handleInput === 'function') {
+        host.handleInput({ target: unwrap(input) || input });
+      }
+    } catch (_) {}
+
+    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+
+    const after =
+      typeof host.mediaLength === 'number' ? host.mediaLength : 0;
+    return {
+      ok: after > 0 || mediaPreviewReady(host),
+      error: null,
+    };
+  }
+
   /**
-   * Reddit accepts media through r-post-media-input.addFiles(), not synthetic drops.
-   * Greasemonkey File objects are sandboxed, so build the File in page JS.
+   * Reddit accepts media through r-post-media-input.addFiles().
+   * Do not use unsafeWindow.Function / eval: Reddit CSP blocks it.
    */
-  function addFilesInPageContext(b64, name, type) {
-    const pageSrc =
-      'var bin=atob(b64),arr=new Uint8Array(bin.length);' +
-      'for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);' +
-      'var file=new File([arr],name,{type:type});' +
-      'var host=document.querySelector("r-post-media-input#post-composer_media")||document.querySelector("r-post-media-input");' +
-      'if(!host||typeof host.addFiles!=="function")throw new Error("r-post-media-input.addFiles missing");' +
-      'var before=typeof host.mediaLength==="number"?host.mediaLength:0;' +
-      'var ret=host.addFiles([file]);' +
-      'var after=typeof host.mediaLength==="number"?host.mediaLength:before;' +
-      'if(!(ret===true||after>before))throw new Error("addFiles returned false (file rejected?)");' +
-      'return true;';
+  function attachFileToReddit(host, buf, name, type) {
+    const file = makeFileFromBuffer(buf, name, type);
+    const attempts = [];
 
-    try {
-      if (typeof unsafeWindow !== 'undefined' && unsafeWindow.Function) {
-        const fn = new unsafeWindow.Function('b64', 'name', 'type', pageSrc);
-        fn(b64, name, type);
-        return { ok: true, error: null };
-      }
-    } catch (e) {
-      console.warn('[PakGameDev] page-context addFiles failed', e);
-      return {
-        ok: false,
-        error: String(e && e.message ? e.message : e),
-      };
-    }
+    let result = callAddFiles(host, file);
+    attempts.push('addFiles: ' + (result.ok ? 'ok' : result.error));
+    if (result.ok) return { ok: true, error: null, attempts };
 
-    // Same-context fallback (Tampermonkey and similar).
-    try {
-      const host = getMediaHost();
-      if (!host || typeof host.addFiles !== 'function') {
-        return { ok: false, error: 'addFiles unavailable in userscript context' };
-      }
-      const bin = atob(b64);
-      const arr = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      const file = new File([arr], name, { type });
-      const before = host.mediaLength || 0;
-      const ret = host.addFiles([file]);
-      const ok = ret === true || (host.mediaLength || 0) > before;
-      return {
-        ok,
-        error: ok ? null : 'addFiles returned false (file rejected?)',
-      };
-    } catch (e) {
-      return { ok: false, error: String(e && e.message ? e.message : e) };
-    }
+    result = assignViaFileInput(host, file);
+    attempts.push('fileInput: ' + (result.ok ? 'ok' : result.error || 'no preview'));
+    if (result.ok) return { ok: true, error: null, attempts };
+
+    return {
+      ok: false,
+      error: attempts.join(' | '),
+      attempts,
+    };
   }
 
   async function attachCoverAsImageMedia(imageUrl, setStatus) {
@@ -234,12 +298,11 @@
     }
 
     setStatus('Attaching cover…');
-    const b64 = arrayBufferToBase64(buf);
-    const result = addFilesInPageContext(b64, name, type);
-    console.log('[PakGameDev]', VERSION, 'addFiles result', result);
+    const result = attachFileToReddit(host, buf, name, type);
+    console.log('[PakGameDev]', VERSION, 'attach result', result);
 
     if (!result.ok) {
-      throw new Error(result.error || 'addFiles failed');
+      throw new Error(result.error || 'attach failed');
     }
 
     await waitFor(() => mediaPreviewReady(host), 'media preview after addFiles', {
