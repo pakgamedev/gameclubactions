@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PakGameDev Custom Post Type
 // @namespace    http://tampermonkey.net/
-// @version      3.8
-// @description  Adds a floating Showcase button that sets Title, Body, Image (Manual-Paste) from post.json
+// @version      4.0
+// @description  Fills weekly Game Dev Club Reddit IMAGE post from post.json (title, body, generated cover)
 // @author       Gemini
 // @match        https://www.reddit.com/r/PakGameDev/submit*
 // @grant        none
@@ -53,7 +53,7 @@
                 return;
             }
 
-            let remoteData = { title: "", body: "", header_image: "" };
+            let remoteData = { title: "", body: "", header_image: "", cover_image: "" };
             try {
                 const response = await fetch('https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json');
                 if (response.ok) {
@@ -62,6 +62,9 @@
             } catch (err) {
                 console.error('[PakGameDev Script] Failed to fetch remote data.', err);
             }
+
+            // Prefer generated weekly cover; fall back to raw Steam/Itch header
+            const imageUrl = remoteData.cover_image || remoteData.header_image;
             
             const findField = (name) => {
                 let field = document.querySelector(`textarea[name="${name}"], input[name="${name}"]`);
@@ -122,9 +125,9 @@
             }
 
             // 3. Handle Image via Clipboard + Auto-Paste
-            if (remoteData.header_image) {
+            if (imageUrl) {
                 try {
-                    const imgResponse = await fetch(remoteData.header_image);
+                    const imgResponse = await fetch(imageUrl);
                     const initialBlob = await imgResponse.blob();
                     
                     const convertToPng = (blob) => {
