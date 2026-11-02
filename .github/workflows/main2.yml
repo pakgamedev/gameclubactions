@@ -1,4 +1,4 @@
-name: Pick Random Weekly Game
+name: Pick Weekly Game
 
 on:
   schedule:
@@ -10,9 +10,7 @@ jobs:
   pick-game:
     runs-on: ubuntu-latest
     permissions:
-          # Give the default GITHUB_TOKEN write permission to commit and push the
-          # added or changed files to the repository.
-          contents: write
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -26,122 +24,49 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Dependencies
-        run: npm install firebase-admin discord.js
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
-      - name: Select Game, Post Discord, Generate Reddit Content
+      - name: Install Dependencies
+        run: |
+          npm install firebase-admin discord.js
+          pip install Pillow
+
+      - name: Select top-voted game, Discord, outreach package
         env:
           APP_ID: ${{ vars.APP_ID }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_FORUM_CHANNEL_ID: ${{ secrets.DISCORD_FORUM_CHANNEL_ID }}
           DEV_CLUB_ROLE_ID: ${{ secrets.DEV_CLUB_ROLE_ID }}
           DISCORD_ANNOUNCE_CHANNEL_ID: ${{ secrets.DISCORD_ANNOUNCE_CHANNEL_ID }}
-        run: |
-          node <<'EOF'
-          const fs = require('fs');
-          const admin = require('firebase-admin');
-          const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+        run: node scripts/pick-weekly-game.js
 
-          admin.initializeApp();
-          const db = admin.firestore();
+      - name: Post to Bluesky
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+        run: node scripts/post-bluesky.js
+        continue-on-error: true
 
-          const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-          const {
-            APP_ID,
-            DISCORD_BOT_TOKEN,
-            DISCORD_FORUM_CHANNEL_ID,
-            DEV_CLUB_ROLE_ID,
-            DISCORD_ANNOUNCE_CHANNEL_ID
-          } = process.env;
-
-          async function run() {
-            const gamesColPath = `artifacts/${APP_ID}/public/data/games`;
-            const currentDocPath = `artifacts/${APP_ID}/public/data/current/game`;
-
-            const snapshot = await db.collection(gamesColPath).get();
-            if (snapshot.empty) {
-              console.log('No games found');
-              return;
-            }
-
-            const docs = snapshot.docs;
-            const selectedDoc = docs[Math.floor(Math.random() * docs.length)];
-            const game = selectedDoc.data();
-
-            await db.doc(currentDocPath).set({
-              ...game,
-              updated_at: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            await selectedDoc.ref.delete();
-
-            /* ---------- REDDIT CONTENT ---------- */
-
-            const post = {
-              title: `We are playing ${game.name} - Weekly Pakistan Game Dev Club`,
-              body: `Game Dev Club is a weekly activity where Pakistan Game Dev community is encouraged to try new games, analyze them from a game dev perspective, review them and discuss them on our discord (link in the sidebar)\n\n\nAs Stephen King says \"If you want to be a writer, you must do two things above all others: read a lot and write a lot.\" We have adopted it for our craft and we aim to Play a lot of games and Make a lot of games.\n\n\nThis week we are playing ${game.name}. Everyone have until 11pm Sunday to play, review and discuss the game.`.trim(),
-              header_image: game.header_image
-            };
-
-            fs.writeFileSync('reddit-auto-post/post.json', JSON.stringify(post, null, 2));
-
-            /* ---------- DISCORD POST ---------- */
-
-            await client.login(DISCORD_BOT_TOKEN);
-
-            client.once('ready', async () => {
-              const channel = await client.channels.fetch(DISCORD_FORUM_CHANNEL_ID);
-
-              const now = new Date();
-              const sunday = new Date(now);
-              const daysUntilSunday = (7 - now.getUTCDay()) % 7;
-              sunday.setUTCDate(now.getUTCDate() + daysUntilSunday);
-              sunday.setUTCHours(18, 0, 0, 0);
-              const unixTimestamp = Math.floor(sunday.getTime() / 1000);
-
-              const embed = new EmbedBuilder()
-                .setTitle(`🎮 Current Game: ${game.name}`)
-                .setURL(game.url)
-                .setImage(game.header_image)
-                .setThumbnail(game.icon_url)
-                .addFields({ name: 'Link', value: `[Click here](${game.url})` })
-                .setFooter({ text: 'Weekly Game' })
-                .setTimestamp();
-
-              const thread = await channel.threads.create({
-                name: game.name,
-                appliedTags: ['1455828972339331146'],
-                message: {
-                  content: `<@&${DEV_CLUB_ROLE_ID}> Download the game and discuss.\nDeadline: <t:${unixTimestamp}:f>`,
-                  embeds: [embed]
-                }
-              });
-
-              const announceChannel = await client.channels.fetch(DISCORD_ANNOUNCE_CHANNEL_ID);
-
-              const forumChannelLink = `https://discord.com/channels/${thread.guildId}/${DISCORD_FORUM_CHANNEL_ID}`;
-              const threadLink = `https://discord.com/channels/${thread.guildId}/${thread.id}`;
-
-              await announceChannel.send(
-                `Check out the latest game in ${forumChannelLink} : ${threadLink}\n` +
-                `To join the club: https://discord.com/channels/1263723973603102802/1263854846038249532/1455471838833541262`
-              );
-
-              fs.writeFileSync('.github/workflows/current_thread_id', thread.id, 'utf8');
-
-              client.destroy();
-            });
-          }
-
-          run().catch(err => {
-            console.error(err);
-            process.exit(1);
-          });
-          EOF
+      - name: Post to LinkedIn
+        env:
+          LINKEDIN_ORGANIZATION_ID: ${{ secrets.LINKEDIN_ORGANIZATION_ID }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_REFRESH_TOKEN: ${{ secrets.LINKEDIN_REFRESH_TOKEN }}
+          LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
+          LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}
+        run: node scripts/post-linkedin.js
+        continue-on-error: true
 
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
+          commit_message: 'chore: weekly club outreach package'
           file_pattern: |
             reddit-auto-post/post.json
+            outreach/weekly.md
+            outreach/bluesky.json
+            outreach/linkedin.json
+            outreach/weekly-cover.png
             .github/workflows/current_thread_id

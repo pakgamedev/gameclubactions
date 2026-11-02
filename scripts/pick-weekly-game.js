@@ -121,8 +121,15 @@ function buildOutreach(game, threadUrl) {
       cover_image: COVER_URL,
       game_name: game.name,
     },
+    linkedin: {
+      text: body,
+      cover_image: COVER_URL,
+      club_url: CLUB_URL,
+      discord_thread_url: threadUrl,
+      game_name: game.name,
+    },
     weeklyMd: [
-      `# Weekly Game Dev Club — ${game.name}`,
+      `# Weekly Game Dev Club: ${game.name}`,
       '',
       '## Assets',
       `- Cover (IG / TikTok / Reddit / LinkedIn / YouTube): ${COVER_URL}`,
@@ -144,7 +151,7 @@ function buildOutreach(game, threadUrl) {
       shortCaption,
       '```',
       '',
-      '## LinkedIn / longer caption (+ weekly cover)',
+      '## LinkedIn (auto when secrets set; paste fallback)',
       '```',
       body,
       '```',
@@ -190,6 +197,10 @@ async function writeOutreachFiles(outreach) {
   fs.writeFileSync(
     path.join(outreachDir, 'bluesky.json'),
     JSON.stringify(outreach.bluesky, null, 2) + '\n'
+  );
+  fs.writeFileSync(
+    path.join(outreachDir, 'linkedin.json'),
+    JSON.stringify(outreach.linkedin, null, 2) + '\n'
   );
   fs.writeFileSync(path.join(outreachDir, 'weekly.md'), outreach.weeklyMd);
 }

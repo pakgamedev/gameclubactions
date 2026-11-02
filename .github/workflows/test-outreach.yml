@@ -13,6 +13,7 @@ on:
         options:
           - discord
           - bluesky
+          - linkedin
           - package
           - reddit
           - all
@@ -67,6 +68,11 @@ jobs:
           DISCORD_ANNOUNCE_CHANNEL_ID: ${{ secrets.DISCORD_ANNOUNCE_CHANNEL_ID }}
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          LINKEDIN_ORGANIZATION_ID: ${{ secrets.LINKEDIN_ORGANIZATION_ID }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_REFRESH_TOKEN: ${{ secrets.LINKEDIN_REFRESH_TOKEN }}
+          LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
+          LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}
         run: |
           node scripts/test-outreach.js \
             --channel="${{ inputs.channel }}" \
@@ -83,5 +89,6 @@ jobs:
             outreach/weekly-cover.png
             outreach/weekly.md
             outreach/bluesky.json
+            outreach/linkedin.json
             reddit-auto-post/post.json
           if-no-files-found: ignore

@@ -5,6 +5,7 @@
  *   node scripts/test-outreach.js --channel=package
  *   node scripts/test-outreach.js --channel=discord
  *   node scripts/test-outreach.js --channel=bluesky
+ *   node scripts/test-outreach.js --channel=linkedin
  *   node scripts/test-outreach.js --channel=all
  *
  * Optional:
@@ -16,6 +17,7 @@
  * Discord needs: DISCORD_BOT_TOKEN, DISCORD_FORUM_CHANNEL_ID,
  *   DEV_CLUB_ROLE_ID, DISCORD_ANNOUNCE_CHANNEL_ID
  * Bluesky needs: BLUESKY_HANDLE, BLUESKY_APP_PASSWORD
+ * LinkedIn needs: LINKEDIN_ORGANIZATION_ID + access token (or refresh trio)
  */
 const fs = require('fs');
 const path = require('path');
@@ -149,8 +151,19 @@ function writePackage(outreach) {
     path.join(outreachDir, 'bluesky.json'),
     JSON.stringify(outreach.bluesky, null, 2) + '\n'
   );
+  const linkedin = {
+    text: outreach.body,
+    cover_image: COVER_URL,
+    club_url: CLUB_URL,
+    discord_thread_url: outreach.reddit.discord_thread_url,
+    game_name: outreach.reddit.game_name || game.name,
+  };
+  fs.writeFileSync(
+    path.join(outreachDir, 'linkedin.json'),
+    JSON.stringify(linkedin, null, 2) + '\n'
+  );
   const weeklyMd = [
-    `# Weekly Game Dev Club — ${game.name} (TEST)`,
+    `# Weekly Game Dev Club: ${outreach.reddit.game_name || game.name} (TEST)`,
     '',
     '## Reddit title',
     outreach.reddit.title,
@@ -179,7 +192,9 @@ function writePackage(outreach) {
     '',
   ].join('\n');
   fs.writeFileSync(path.join(outreachDir, 'weekly.md'), weeklyMd);
-  console.log('Wrote outreach/weekly.md, outreach/bluesky.json, reddit-auto-post/post.json');
+  console.log(
+    'Wrote outreach/weekly.md, outreach/bluesky.json, outreach/linkedin.json, reddit-auto-post/post.json'
+  );
 }
 
 async function postDiscord(game) {
@@ -274,6 +289,17 @@ async function postBluesky() {
   }
 }
 
+async function postLinkedIn() {
+  const result = spawnSync('node', [path.join(__dirname, 'post-linkedin.js')], {
+    encoding: 'utf8',
+    env: process.env,
+  });
+  if (result.stdout) console.log(result.stdout.trim());
+  if (result.status !== 0) {
+    throw new Error(result.stderr || `linkedin failed (${result.status})`);
+  }
+}
+
 async function run() {
   console.log(`\n=== Testing channel: ${channel} ===`);
   console.log(`Game: ${game.name}`);
@@ -307,6 +333,15 @@ async function run() {
       writePackage(buildOutreach(game, CLUB_URL));
     }
     await postBluesky();
+  }
+
+  if (channel === 'linkedin' || channel === 'all') {
+    console.log('\n[4] Posting LinkedIn…');
+    if (!fs.existsSync(path.join(repoRoot(), 'outreach', 'linkedin.json'))) {
+      buildWeeklyCover(game);
+      writePackage(buildOutreach(game, CLUB_URL));
+    }
+    await postLinkedIn();
   }
 
   if (channel === 'reddit') {
