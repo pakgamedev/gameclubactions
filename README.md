@@ -93,7 +93,7 @@ Reddit does not allow publishing Devvit apps from Pakistan, so Reddit is **manua
 1. Install [`greasemonkey/reddit-game-club-post-button.js`](greasemonkey/reddit-game-club-post-button.js).
 2. After Monday’s commit is live on GitHub Pages, open  
    `https://www.reddit.com/r/PakGameDev/submit?type=IMAGE`
-3. Click **Weekly Game Post** — fills title, body, and the generated cover image.
+3. Click **Weekly Game Post**. It fills title, body, and the generated cover image.
 4. Submit. Body CTAs point to Discord + the club board.
 
 The old `reddit-auto-post/pak-game-dev-app` Devvit project is unused leftover; do not rely on it.
