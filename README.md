@@ -9,7 +9,7 @@ Public board: [pakgamedev.com/club](https://pakgamedev.com/club)
 | When | What |
 |------|------|
 | **Mon ~7:00 AM** | Pick highest-voted queued game → `current/game`, open Discord forum thread, announce, generate covers + outreach package, Bluesky post |
-| **Mon morning (manual)** | Reddit IMAGE post via Greasemonkey; paste LinkedIn / IG / TikTok / YouTube from `outreach/weekly.md` |
+| **Mon morning (manual)** | Reddit IMAGE via Greasemonkey; paste LinkedIn / IG / TikTok / YouTube from the [share kit](https://pakgamedev.com/gameclubactions/outreach/share.html) |
 | **Sun 11:00 PM** | Archive `current/game` → `past/`, retag Discord thread as done |
 
 Between Sunday archive and Monday pick the club page shows “Next game is being chosen.”
@@ -61,15 +61,19 @@ Bluesky posts automatically when `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD` sec
 
 Instagram / LinkedIn / TikTok / YouTube stay paste-from-`weekly.md`.
 
-### LinkedIn (paste for now)
+### Paste channels (LinkedIn / IG / TikTok / YouTube)
 
-LinkedIn’s **Community Management API** (needed to post as a Company Page) is only approved for **registered legal entities** (LLC, corp, etc.), not individuals or informal communities. PakGameDev does not qualify today, so LinkedIn is **manual**:
+LinkedIn Page API access needs a registered legal entity, so LinkedIn stays paste-based with the other visual networks.
 
-1. Use `outreach/weekly-cover.png` (or the CDN URL in `weekly.md`).
-2. Paste the LinkedIn body from `outreach/weekly.md` / `outreach/linkedin.json`.
-3. Post as the Page from the LinkedIn UI.
+**Curator share kit** (fewest clicks):
 
-`scripts/post-linkedin.js` and the Monday / test workflow hooks remain in the repo but **no-op without secrets**. If PakGameDev later has a registered entity and LinkedIn approves Community Management, mint tokens with `scripts/linkedin-oauth-setup.js` and add the `LINKEDIN_*` secrets documented in that script’s header.
+1. Open [outreach/share.html](https://pakgamedev.com/gameclubactions/outreach/share.html) (also linked from the club page as **Share kit**, or run `scripts/open-share-kit.sh`).
+2. Click **LinkedIn: copy + cover + open** (or the matching one-shot for IG).
+3. In the tab that opens: paste, attach the downloaded cover, post.
+
+Edit composer destinations in [`outreach/share-config.json`](outreach/share-config.json) (e.g. point LinkedIn at your Page admin composer URL).
+
+`scripts/post-linkedin.js` remains for a future day if PakGameDev becomes a registered entity and LinkedIn approves Community Management.
 
 ### Reddit (no Devvit)
 
