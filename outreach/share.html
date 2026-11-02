@@ -187,10 +187,6 @@
           <button type="button" id="copyCaption">Copy caption</button>
           <button type="button" class="secondary" id="downloadCover">Download cover</button>
         </div>
-        <div class="row">
-          <a class="btn secondary" id="coverOpen" href="#" target="_blank" rel="noopener">Open cover</a>
-          <button type="button" class="secondary" id="copyCoverUrl">Copy cover URL</button>
-        </div>
       </section>
 
       <section class="panel stack">
@@ -217,8 +213,6 @@
       config: {
         linkedinComposeUrl: 'https://www.linkedin.com/feed/?shareActive=true',
         instagramUrl: 'https://www.instagram.com/',
-        tiktokUploadUrl: 'https://www.tiktok.com/tiktokstudio/upload',
-        youtubeStudioUrl: 'https://studio.youtube.com/',
         redditSubmitUrl: 'https://www.reddit.com/r/PakGameDev/submit/?type=IMAGE',
       },
       caption: '',
@@ -254,11 +248,11 @@
       window.open(url, '_blank', 'noopener,noreferrer');
     }
 
-    function addOpener(label, url, { primary = false, prep = false } = {}) {
+    function addOpener(label, url, { prep = false } = {}) {
       const btn = document.createElement('button');
       btn.type = 'button';
+      btn.classList.add('secondary');
       btn.textContent = label;
-      if (!primary) btn.classList.add('secondary');
       btn.addEventListener('click', async () => {
         if (prep) {
           await copyText(state.caption);
@@ -318,15 +312,11 @@
           $('cover').onerror = null;
           $('cover').src = state.coverCdn + '?cb=' + Date.now();
           state.coverUrl = state.coverCdn;
-          $('coverOpen').href = state.coverUrl;
         };
-        $('coverOpen').href = state.coverUrl;
 
         $('openers').innerHTML = '';
-        addOpener('LinkedIn', state.config.linkedinComposeUrl, { primary: true, prep: true });
+        addOpener('LinkedIn', state.config.linkedinComposeUrl, { prep: true });
         addOpener('Instagram', state.config.instagramUrl, { prep: true });
-        addOpener('TikTok', state.config.tiktokUploadUrl, { prep: true });
-        addOpener('YouTube', state.config.youtubeStudioUrl, { prep: true });
         addOpener('Reddit IMAGE', state.config.redditSubmitUrl);
 
         $('kit').hidden = false;
@@ -344,10 +334,6 @@
     $('downloadCover').addEventListener('click', () => {
       downloadCover();
       toast('Cover download started');
-    });
-    $('copyCoverUrl').addEventListener('click', async () => {
-      await copyText(state.coverCdn);
-      toast('Cover URL copied');
     });
 
     boot();
