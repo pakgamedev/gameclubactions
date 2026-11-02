@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PakGameDev Weekly Game Post
 // @namespace    http://tampermonkey.net/
-// @version      6.0
-// @description  Fills weekly Game Dev Club Reddit IMAGE post: title/body text + cover via r-post-media-input (not body paste)
+// @version      7.0
+// @description  Fills weekly Game Dev Club Reddit IMAGE post. Loads cover via Image/canvas (Reddit blocks fetch) and drops it on r-post-media-input.
 // @author       PakGameDev
 // @match        https://www.reddit.com/r/PakGameDev/submit*
 // @grant        none
@@ -15,68 +15,90 @@
     'https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  function waitFor(getter, { timeout = 12000, interval = 200 } = {}) {
+  function waitFor(getter, { timeout = 15000, interval = 200 } = {}) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
-      const tick = () => {
-        let value;
+      (function tick() {
+        let v = null;
         try {
-          value = getter();
-        } catch (_) {
-          value = null;
-        }
-        if (value) return resolve(value);
+          v = getter();
+        } catch (_) {}
+        if (v) return resolve(v);
         if (Date.now() - start > timeout) {
-          return reject(new Error('waitFor timed out'));
+          return reject(new Error('Timed out waiting for element'));
         }
         setTimeout(tick, interval);
-      };
-      tick();
+      })();
     });
   }
 
-  async function clickImagesAndVideoTab() {
-    // Proven path from MultiPost: r-post-type-select → tablist → 2nd tab
-    const select = document.querySelector('r-post-type-select');
-    const tablist = select?.shadowRoot?.querySelector('div[role="tablist"]');
-    const trackers = tablist?.querySelectorAll('faceplate-tracker');
-    if (trackers && trackers.length > 1) {
-      const btn = trackers[1].querySelector('button');
-      if (btn) {
-        btn.click();
-        await sleep(800);
-        return true;
-      }
-    }
-
-    // Fallback: visible tab buttons
-    for (const el of document.querySelectorAll('button,[role="tab"]')) {
-      const label = `${el.getAttribute('aria-label') || ''} ${el.textContent || ''}`
-        .trim()
-        .toLowerCase();
-      if (label.includes('image') && label.includes('video')) {
-        el.click();
-        await sleep(800);
-        return true;
-      }
-    }
-    return false;
+  /** Reddit wraps window.fetch and blocks cross-origin; Image+canvas still works. */
+  async function loadCoverFile(url) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('Cover image failed to load'));
+      img.src = url + (url.includes('?') ? '&' : '?') + 'cb=' + Date.now();
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
+    });
+    return new File([blob], 'weekly-cover.png', { type: 'image/png' });
   }
 
-  function getMediaFileInput() {
-    // MultiPost path — host is in light DOM, input in open shadowRoot
-    const host = document.querySelector('r-post-media-input');
-    const input = host?.shadowRoot?.querySelector('input[type="file"], input');
-    if (input) return input;
+  function fireDrop(el, file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    for (const type of ['dragenter', 'dragover', 'drop']) {
+      el.dispatchEvent(
+        new DragEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          dataTransfer: dt,
+        })
+      );
+    }
+  }
 
-    const alt = document.querySelector('shreddit-media-input, faceplate-file-input');
-    return (
-      alt?.shadowRoot?.querySelector('input[type="file"], input') || null
+  async function attachCoverAsImageMedia(imageUrl, setStatus) {
+    setStatus('Loading cover…');
+    const file = await loadCoverFile(imageUrl);
+
+    setStatus('Finding uploader…');
+    const host = await waitFor(() => document.querySelector('r-post-media-input'));
+    const root = host.shadowRoot;
+    if (!root) throw new Error('r-post-media-input has no shadowRoot');
+
+    const dropTarget =
+      root.querySelector('#fileInputInnerWrapper') ||
+      root.querySelector('#inputInfo') ||
+      host;
+
+    setStatus('Dropping cover…');
+    // Only drop once on the media dropzone — NOT into the body editor
+    fireDrop(dropTarget, file);
+
+    // Wait for preview blob imgs
+    await waitFor(
+      () => {
+        const imgs = root.querySelectorAll('img');
+        for (const img of imgs) {
+          if (img.src && img.src.startsWith('blob:')) return img;
+        }
+        return null;
+      },
+      { timeout: 10000, interval: 300 }
     );
   }
 
   function getTitleTextarea() {
-    const modern =
+    return (
       document
         .querySelector('post-composer-title[name="title"]')
         ?.shadowRoot?.querySelector('textarea') ||
@@ -85,134 +107,69 @@
         ?.shadowRoot?.querySelector('textarea#innerTextArea, textarea') ||
       document
         .querySelector('faceplate-textarea-input')
-        ?.shadowRoot?.querySelector('textarea#innerTextArea, textarea');
-    return modern || document.querySelector('textarea[name="title"]');
+        ?.shadowRoot?.querySelector('textarea#innerTextArea, textarea') ||
+      document.querySelector('textarea[name="title"]')
+    );
   }
 
-  function getOptionalBodyEditor() {
-    // IMAGE posts often have an optional caption composer — text only
+  function getBodyEditor() {
+    // Optional caption/body — text only
     return (
       document
         .querySelector('shreddit-composer[name="optionalBody"]')
         ?.querySelector('div[contenteditable="true"]') ||
       document
-        .querySelector('shreddit-composer[name="optionalBody"]')
-        ?.shadowRoot?.querySelector('div[contenteditable="true"]') ||
-      document.querySelector(
-        'faceplate-form-section[name="type"] shreddit-composer[name="body"] div[contenteditable="true"]'
-      ) ||
-      null
+        .querySelector('shreddit-composer[name="body"]')
+        ?.querySelector('div[contenteditable="true"]') ||
+      document.querySelector('div[name="body"][contenteditable="true"]')
     );
   }
 
-  function setInputValue(el, value) {
+  function setNativeValue(el, value) {
     const proto =
       el.tagName === 'TEXTAREA'
         ? HTMLTextAreaElement.prototype
         : HTMLInputElement.prototype;
-    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-    desc?.set?.call(el, value);
+    Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(el, value);
     if (el.value !== value) el.value = value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
-  async function fetchCoverFile(url) {
-    const res = await fetch(url, { mode: 'cors', cache: 'no-cache' });
-    if (!res.ok) throw new Error(`Cover fetch failed: HTTP ${res.status}`);
-    const blob = await res.blob();
-    // Keep original type when possible; Reddit accepts png/jpeg
-    const type = blob.type && blob.type.startsWith('image/') ? blob.type : 'image/png';
-    const ext = type.includes('jpeg') || type.includes('jpg') ? 'jpg' : 'png';
-    if (type === 'image/png' || type === 'image/jpeg' || type === 'image/jpg') {
-      return new File([blob], `weekly-cover.${ext}`, { type: type === 'image/jpg' ? 'image/jpeg' : type });
-    }
-    // Convert odd types to PNG
-    const bmp = await createImageBitmap(blob);
-    const canvas = document.createElement('canvas');
-    canvas.width = bmp.width;
-    canvas.height = bmp.height;
-    canvas.getContext('2d').drawImage(bmp, 0, 0);
-    const png = await new Promise((r) => canvas.toBlob(r, 'image/png'));
-    return new File([png], 'weekly-cover.png', { type: 'image/png' });
-  }
-
-  function assignFiles(input, file) {
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    input.files = dt.files;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  async function dropFileOnMediaHost(file) {
-    const host =
-      document.querySelector('r-post-media-input') ||
-      document.querySelector('[data-testid="media-input"]') ||
-      document.querySelector('shreddit-media-input');
-    if (!host) return false;
-
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    for (const type of ['dragenter', 'dragover', 'drop']) {
-      host.dispatchEvent(
-        new DragEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          dataTransfer: dt,
-        })
-      );
-    }
-    return true;
-  }
-
-  async function uploadCover(imageUrl, setStatus) {
-    setStatus('Images tab…');
-    await clickImagesAndVideoTab();
-
-    setStatus('Fetching cover…');
-    const file = await fetchCoverFile(imageUrl);
-
-    setStatus('Waiting for uploader…');
-    const input = await waitFor(getMediaFileInput, {
-      timeout: 15000,
-      interval: 250,
-    });
-
-    setStatus('Attaching cover…');
-    assignFiles(input, file);
-
-    // Give Reddit a moment; if preview never appears, try drop fallback
-    await sleep(600);
-    const preview =
-      document.querySelector('img[alt*="uploaded" i], img[src^="blob:"], shreddit-aspect-ratio img') ||
-      document.querySelector('r-post-media-input img');
-    if (!preview) {
-      console.warn('[PakGameDev] No preview yet — trying drop event fallback');
-      await dropFileOnMediaHost(file);
-      await sleep(600);
-    }
-  }
-
-  async function fillTitleAndBody(data) {
+  async function fillText(data) {
     const title = await waitFor(getTitleTextarea, { timeout: 8000 }).catch(
       () => null
     );
     if (title) {
       title.focus();
-      setInputValue(title, (data.title || '').slice(0, 300));
-    } else {
-      console.warn('[PakGameDev] Title field not found');
+      setNativeValue(title, (data.title || '').slice(0, 300));
     }
 
-    // Optional caption — TEXT ONLY. Never paste image blobs here.
-    const body = getOptionalBodyEditor();
+    const body = getBodyEditor();
     if (body && data.body) {
       body.focus();
       document.execCommand('selectAll', false, null);
       document.execCommand('insertText', false, data.body);
       body.dispatchEvent(new Event('input', { bubbles: true }));
     }
+  }
+
+  /** post.json via Image-less path: use XHR because fetch is patched by Reddit. */
+  function loadPostJson() {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', POST_JSON + '?cb=' + Date.now());
+      xhr.responseType = 'json';
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+          resolve(xhr.response);
+        } else {
+          reject(new Error('post.json HTTP ' + xhr.status));
+        }
+      };
+      xhr.onerror = () => reject(new Error('post.json network error'));
+      xhr.send();
+    });
   }
 
   function injectButton() {
@@ -246,15 +203,13 @@
 
       try {
         setStatus('Loading…');
-        const res = await fetch(POST_JSON, { cache: 'no-cache' });
-        if (!res.ok) throw new Error(`post.json HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await loadPostJson();
         const imageUrl = data.cover_image || data.header_image;
         if (!imageUrl) throw new Error('No cover_image in post.json');
 
-        await uploadCover(imageUrl, setStatus);
+        await attachCoverAsImageMedia(imageUrl, setStatus);
         setStatus('Filling text…');
-        await fillTitleAndBody(data);
+        await fillText(data);
         setStatus('✅ Done — review & post');
       } catch (err) {
         console.error('[PakGameDev]', err);
@@ -271,9 +226,5 @@
 
   const id = setInterval(injectButton, 800);
   setTimeout(() => clearInterval(id), 15000);
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', injectButton);
-  } else {
-    injectButton();
-  }
+  injectButton();
 })();
