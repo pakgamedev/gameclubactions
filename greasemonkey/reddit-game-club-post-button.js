@@ -121,7 +121,7 @@
     return dt;
   }
 
-  /** Force dataTransfer onto the event — constructor args are often ignored. */
+  /** Force dataTransfer onto the event; constructor args are often ignored. */
   function dispatchDrop(el, file) {
     const dt = makeDataTransfer(file);
     for (const type of ['dragenter', 'dragover', 'drop']) {
@@ -181,7 +181,7 @@
       () =>
         document.querySelector('r-post-media-input#post-composer_media') ||
         document.querySelector('r-post-media-input'),
-      'r-post-media-input (scroll down if needed — media dropzone under the body)'
+      'r-post-media-input (scroll down if needed: media dropzone under the body)'
     );
     host.scrollIntoView({ block: 'center', behavior: 'instant' });
     await sleep(350);
