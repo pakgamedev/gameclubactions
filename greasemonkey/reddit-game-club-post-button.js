@@ -1,21 +1,57 @@
 // ==UserScript==
 // @name        PakGameDev Weekly Game Post
 // @namespace   https://pakgamedev.com/gameclub
-// @version     7.2
+// @version     7.3
 // @description Fills weekly Game Dev Club Reddit IMAGE post (cover drop onto r-post-media-input)
 // @author      PakGameDev
 // @match       https://www.reddit.com/r/PakGameDev/submit*
-// @grant       none
+// @grant       GM.xmlHttpRequest
+// @connect     pakgamedev.com
+// @connect     github.com
+// @connect     raw.githubusercontent.com
 // @run-at      document-idle
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  const VERSION = '7.2';
+  const VERSION = '7.3';
   const POST_JSON =
     'https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /** Greasemonkey 4: GM.xmlHttpRequest (cross-origin; page XHR is blocked). */
+  function gmRequest(details) {
+    const req =
+      typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function'
+        ? GM.xmlHttpRequest
+        : typeof GM_xmlhttpRequest === 'function'
+          ? GM_xmlhttpRequest
+          : null;
+    if (!req) {
+      return Promise.reject(
+        new Error(
+          'GM.xmlHttpRequest missing. In Greasemonkey, edit the script header so it has: // @grant GM.xmlHttpRequest (and remove @grant none). Then reinstall.'
+        )
+      );
+    }
+    return new Promise((resolve, reject) => {
+      req({
+        ...details,
+        onload: (res) => resolve(res),
+        onerror: (res) =>
+          reject(
+            new Error(
+              'GM request failed' +
+                (res && res.status ? ' HTTP ' + res.status : '') +
+                ' for ' +
+                details.url
+            )
+          ),
+        ontimeout: () => reject(new Error('GM request timeout for ' + details.url)),
+      });
+    });
+  }
 
   function waitFor(getter, label, { timeout = 15000, interval = 200 } = {}) {
     return new Promise((resolve, reject) => {
@@ -34,39 +70,49 @@
     });
   }
 
-  /** Reddit patches fetch(); XHR still works for CORS JSON. */
-  function xhrJson(url) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', url);
-      xhr.responseType = 'json';
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
-          resolve(xhr.response);
-        } else reject(new Error('HTTP ' + xhr.status + ' for ' + url));
-      };
-      xhr.onerror = () => reject(new Error('Network error for ' + url));
-      xhr.send();
+  async function gmJson(url) {
+    const res = await gmRequest({
+      method: 'GET',
+      url,
+      headers: { Accept: 'application/json' },
     });
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error('HTTP ' + res.status + ' for ' + url);
+    }
+    try {
+      return JSON.parse(res.responseText);
+    } catch (_) {
+      throw new Error('Invalid JSON from ' + url);
+    }
   }
 
-  /** Reddit patches fetch(); Image+canvas bypasses that for the cover. */
   async function loadCoverFile(url) {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = () => reject(new Error('Cover image failed to load (CORS/network)'));
-      img.src = url + (url.includes('?') ? '&' : '?') + 'cb=' + Date.now();
+    const res = await gmRequest({
+      method: 'GET',
+      url,
+      responseType: 'arraybuffer',
+      overrideMimeType: 'text/plain; charset=x-user-defined',
     });
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    canvas.getContext('2d').drawImage(img, 0, 0);
-    const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
-    });
-    return new File([blob], 'weekly-cover.png', { type: 'image/png' });
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error('Cover HTTP ' + res.status + ' for ' + url);
+    }
+    const buf = res.response;
+    if (!buf || !(buf instanceof ArrayBuffer) || buf.byteLength < 100) {
+      throw new Error('Cover download empty/invalid (' + (buf && buf.byteLength) + ' bytes)');
+    }
+    const lower = url.toLowerCase();
+    const type = lower.includes('.jpg') || lower.includes('.jpeg')
+      ? 'image/jpeg'
+      : lower.includes('.webp')
+        ? 'image/webp'
+        : 'image/png';
+    const name =
+      type === 'image/jpeg'
+        ? 'weekly-cover.jpg'
+        : type === 'image/webp'
+          ? 'weekly-cover.webp'
+          : 'weekly-cover.png';
+    return new File([buf], name, { type });
   }
 
   function makeDataTransfer(file) {
@@ -275,17 +321,17 @@
 
       try {
         setStatus('Loading…');
-        const data = await xhrJson(POST_JSON + '?cb=' + Date.now());
+        const data = await gmJson(POST_JSON + '?cb=' + Date.now());
         const imageUrl = data.cover_image || data.header_image;
         if (!imageUrl) throw new Error('No cover_image in post.json');
 
         await attachCoverAsImageMedia(imageUrl, setStatus);
         setStatus('Filling text…');
         await fillText(data);
-        setStatus('✅ Done — review & post');
+        setStatus('Done - review & post');
       } catch (err) {
         console.error('[PakGameDev]', err);
-        setStatus('Failed — see console');
+        setStatus('Failed - see console');
         alert('[PakGameDev v' + VERSION + '] ' + (err && err.message ? err.message : err));
       }
 
