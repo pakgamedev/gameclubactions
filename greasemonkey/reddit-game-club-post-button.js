@@ -1,18 +1,17 @@
 // ==UserScript==
 // @name         PakGameDev Weekly Game Post
 // @namespace    http://tampermonkey.net/
-// @version      7.1
-// @description  Fills weekly Game Dev Club Reddit IMAGE post (cover via drop on r-post-media-input)
+// @version      7.2
+// @description  Fills weekly Game Dev Club Reddit IMAGE post (cover drop onto r-post-media-input)
 // @author       PakGameDev
 // @match        https://www.reddit.com/r/PakGameDev/submit*
-// @grant        GM_xmlhttpRequest
-// @connect      pakgamedev.com
-// @connect      pakgamedev.github.io
+// @grant        none
 // ==/UserScript==
 
 (function () {
   'use strict';
 
+  const VERSION = '7.2';
   const POST_JSON =
     'https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -34,40 +33,29 @@
     });
   }
 
-  function gmRequest(url, responseType) {
+  /** Reddit patches fetch(); XHR still works for CORS JSON. */
+  function xhrJson(url) {
     return new Promise((resolve, reject) => {
-      const req = typeof GM_xmlhttpRequest === 'function' ? GM_xmlhttpRequest : null;
-      if (!req) {
-        reject(new Error('GM_xmlhttpRequest unavailable'));
-        return;
-      }
-      req({
-        method: 'GET',
-        url,
-        responseType: responseType || 'json',
-        onload: (res) => {
-          if (res.status >= 200 && res.status < 300) resolve(res.response);
-          else reject(new Error('HTTP ' + res.status + ' for ' + url));
-        },
-        onerror: () => reject(new Error('Network error for ' + url)),
-      });
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', url);
+      xhr.responseType = 'json';
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+          resolve(xhr.response);
+        } else reject(new Error('HTTP ' + xhr.status + ' for ' + url));
+      };
+      xhr.onerror = () => reject(new Error('Network error for ' + url));
+      xhr.send();
     });
   }
 
+  /** Reddit patches fetch(); Image+canvas bypasses that for the cover. */
   async function loadCoverFile(url) {
-    // Prefer Tampermonkey XHR (bypasses Reddit's broken window.fetch)
-    try {
-      const buf = await gmRequest(url + (url.includes('?') ? '&' : '?') + 'cb=' + Date.now(), 'arraybuffer');
-      return new File([buf], 'weekly-cover.png', { type: 'image/png' });
-    } catch (e) {
-      console.warn('[PakGameDev] GM cover fetch failed, trying Image()', e);
-    }
-
     const img = new Image();
     img.crossOrigin = 'anonymous';
     await new Promise((resolve, reject) => {
       img.onload = resolve;
-      img.onerror = () => reject(new Error('Cover image failed to load'));
+      img.onerror = () => reject(new Error('Cover image failed to load (CORS/network)'));
       img.src = url + (url.includes('?') ? '&' : '?') + 'cb=' + Date.now();
     });
     const canvas = document.createElement('canvas');
@@ -80,11 +68,15 @@
     return new File([blob], 'weekly-cover.png', { type: 'image/png' });
   }
 
-  /** Chrome often ignores dataTransfer passed to DragEvent constructor — force it. */
-  function dispatchDrop(el, file) {
+  function makeDataTransfer(file) {
     const dt = new DataTransfer();
     dt.items.add(file);
+    return dt;
+  }
 
+  /** Force dataTransfer onto the event — constructor args are often ignored. */
+  function dispatchDrop(el, file) {
+    const dt = makeDataTransfer(file);
     for (const type of ['dragenter', 'dragover', 'drop']) {
       let ev;
       try {
@@ -92,21 +84,22 @@
           bubbles: true,
           cancelable: true,
           composed: true,
-          dataTransfer: dt,
         });
       } catch (_) {
         ev = new Event(type, { bubbles: true, cancelable: true, composed: true });
       }
       try {
-        Object.defineProperty(ev, 'dataTransfer', { get: () => dt });
+        Object.defineProperty(ev, 'dataTransfer', {
+          configurable: true,
+          get: () => dt,
+        });
       } catch (_) {}
       el.dispatchEvent(ev);
     }
   }
 
   function assignInputFiles(input, file) {
-    const dt = new DataTransfer();
-    dt.items.add(file);
+    const dt = makeDataTransfer(file);
     try {
       input.files = dt.files;
     } catch (_) {}
@@ -128,23 +121,23 @@
     const text = (root.textContent || '').toLowerCase();
     if (text.includes('remove media') || text.includes('edit media')) return true;
     const input = root.querySelector('input.file-input, input[type=file]');
-    if (input?.files?.length) return true;
-    return false;
+    return !!(input && input.files && input.files.length);
   }
 
   async function attachCoverAsImageMedia(imageUrl, setStatus) {
     setStatus('Loading cover…');
     const file = await loadCoverFile(imageUrl);
-    console.log('[PakGameDev] cover file', file.size, file.type);
+    console.log('[PakGameDev]', VERSION, 'cover bytes', file.size);
 
     setStatus('Finding uploader…');
-    // Media block can be below the fold / late-mounted
     const host = await waitFor(
-      () => document.querySelector('r-post-media-input#post-composer_media, r-post-media-input'),
-      'r-post-media-input'
+      () =>
+        document.querySelector('r-post-media-input#post-composer_media') ||
+        document.querySelector('r-post-media-input'),
+      'r-post-media-input (scroll down if needed — media dropzone under the body)'
     );
     host.scrollIntoView({ block: 'center', behavior: 'instant' });
-    await sleep(300);
+    await sleep(350);
 
     const root = host.shadowRoot;
     if (!root) throw new Error('r-post-media-input has no shadowRoot');
@@ -152,60 +145,43 @@
     const dropTarget =
       root.querySelector('#fileInputInnerWrapper') ||
       root.querySelector('#inputInfo') ||
-      root.querySelector('.upload-media') ||
+      root.querySelector('button.upload-media') ||
       host;
     const fileInput = root.querySelector('input.file-input, input[type="file"]');
 
     setStatus('Attaching cover…');
 
-    // Strategy A: forced dataTransfer drop (verified in Chrome CDP)
     dispatchDrop(dropTarget, file);
-    await sleep(400);
-    if (mediaAttached(root)) {
-      console.log('[PakGameDev] attached via drop');
-      return;
-    }
+    await sleep(500);
+    if (mediaAttached(root)) return;
 
-    // Strategy B: defineProperty + change on hidden file input
     if (fileInput) {
       assignInputFiles(fileInput, file);
-      await sleep(400);
-      if (mediaAttached(root)) {
-        console.log('[PakGameDev] attached via file input');
-        return;
-      }
+      await sleep(500);
+      if (mediaAttached(root)) return;
     }
 
-    // Strategy C: drop on host too
     dispatchDrop(host, file);
-    await sleep(400);
-    if (mediaAttached(root)) {
-      console.log('[PakGameDev] attached via host drop');
-      return;
-    }
+    await sleep(500);
+    if (mediaAttached(root)) return;
 
-    // Strategy D: click upload button then assign (some builds listen after click)
     const uploadBtn = root.querySelector('#device-upload-button, button.upload-media');
     if (uploadBtn && fileInput) {
       uploadBtn.click();
       await sleep(200);
       assignInputFiles(fileInput, file);
-      await sleep(600);
-      if (mediaAttached(root)) {
-        console.log('[PakGameDev] attached via upload button + input');
-        return;
-      }
+      await sleep(700);
+      if (mediaAttached(root)) return;
     }
 
-    // Final wait — Reddit sometimes attaches async after drop
     try {
-      await waitFor(() => mediaAttached(root), 'media preview after attach', {
-        timeout: 5000,
+      await waitFor(() => mediaAttached(root), 'media preview', {
+        timeout: 4000,
         interval: 250,
       });
-    } catch (e) {
+    } catch (_) {
       throw new Error(
-        'Cover did not attach to IMAGE media slot. Is this ?type=IMAGE and do you see "Drag and Drop or upload media"?'
+        'Cover did not stick on the IMAGE media slot. Confirm URL has type=IMAGE and you can see “Drag and Drop or upload media” under the body.'
       );
     }
   }
@@ -266,33 +242,14 @@
     }
   }
 
-  async function loadPostJson() {
-    try {
-      return await gmRequest(POST_JSON + '?cb=' + Date.now(), 'json');
-    } catch (e) {
-      console.warn('[PakGameDev] GM post.json failed, trying XHR', e);
-    }
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', POST_JSON + '?cb=' + Date.now());
-      xhr.responseType = 'json';
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
-          resolve(xhr.response);
-        } else reject(new Error('post.json HTTP ' + xhr.status));
-      };
-      xhr.onerror = () => reject(new Error('post.json network error'));
-      xhr.send();
-    });
-  }
-
   function injectButton() {
     if (document.getElementById('custom-pkgd-btn')) return;
 
     const btn = document.createElement('button');
     btn.id = 'custom-pkgd-btn';
     btn.type = 'button';
-    btn.textContent = 'Weekly Game Post';
+    btn.title = 'PakGameDev Weekly Game Post v' + VERSION;
+    btn.textContent = 'Weekly Game Post v' + VERSION;
     btn.style.cssText = `
       position: fixed; bottom: 20px; right: 20px; z-index: 99999;
       cursor: pointer; padding: 12px 20px; border-radius: 999px; border: none;
@@ -317,7 +274,7 @@
 
       try {
         setStatus('Loading…');
-        const data = await loadPostJson();
+        const data = await xhrJson(POST_JSON + '?cb=' + Date.now());
         const imageUrl = data.cover_image || data.header_image;
         if (!imageUrl) throw new Error('No cover_image in post.json');
 
@@ -328,11 +285,11 @@
       } catch (err) {
         console.error('[PakGameDev]', err);
         setStatus('Failed — see console');
-        alert('[PakGameDev] ' + (err && err.message ? err.message : err));
+        alert('[PakGameDev v' + VERSION + '] ' + (err && err.message ? err.message : err));
       }
 
       setTimeout(() => {
-        btn.textContent = 'Weekly Game Post';
+        btn.textContent = 'Weekly Game Post v' + VERSION;
       }, 5000);
     });
 
