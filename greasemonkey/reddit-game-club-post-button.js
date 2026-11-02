@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        PakGameDev Weekly Game Post
 // @namespace   https://pakgamedev.com/gameclub
-// @version     7.6
+// @version     7.7
 // @description Fills weekly Game Dev Club Reddit IMAGE post via r-post-media-input.addFiles
 // @author      PakGameDev
 // @match       https://www.reddit.com/r/PakGameDev/submit*
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '7.6';
+  const VERSION = '7.7';
   const POST_JSON =
     'https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -84,66 +84,6 @@
     }
   }
 
-  function toArrayBuffer(res) {
-    if (res.response instanceof ArrayBuffer && res.response.byteLength) {
-      return res.response;
-    }
-    if (typeof res.responseText === 'string' && res.responseText.length) {
-      const s = res.responseText;
-      const buf = new ArrayBuffer(s.length);
-      const view = new Uint8Array(buf);
-      for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xff;
-      return buf;
-    }
-    return null;
-  }
-
-  async function loadCoverBuffer(url) {
-    const res = await gmRequest({
-      url,
-      responseType: 'arraybuffer',
-      overrideMimeType: 'text/plain; charset=x-user-defined',
-    });
-    if (res.status < 200 || res.status >= 300) {
-      throw new Error('Cover HTTP ' + res.status + ' for ' + url);
-    }
-    const buf = toArrayBuffer(res);
-    if (!buf || buf.byteLength < 100) {
-      throw new Error(
-        'Cover download empty/invalid (' +
-          (buf ? buf.byteLength : 0) +
-          ' bytes). Greasemonkey may have blocked the request.'
-      );
-    }
-    const lower = url.toLowerCase();
-    const type =
-      lower.includes('.jpg') || lower.includes('.jpeg')
-        ? 'image/jpeg'
-        : lower.includes('.webp')
-          ? 'image/webp'
-          : 'image/png';
-    const name =
-      type === 'image/jpeg'
-        ? 'weekly-cover.jpg'
-        : type === 'image/webp'
-          ? 'weekly-cover.webp'
-          : 'weekly-cover.png';
-    return { buf, type, name, bytes: buf.byteLength };
-  }
-
-  function arrayBufferToBase64(buf) {
-    const bytes = new Uint8Array(buf);
-    const chunk = 0x8000;
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode.apply(
-        null,
-        bytes.subarray(i, Math.min(i + chunk, bytes.length))
-      );
-    }
-    return btoa(binary);
-  }
-
   function getMediaHost() {
     return (
       document.querySelector('r-post-media-input#post-composer_media') ||
@@ -153,6 +93,11 @@
 
   function mediaPreviewReady(host) {
     if (!host) return false;
+    try {
+      if (host._mediaController && host._mediaController.media.length > 0) {
+        return true;
+      }
+    } catch (_) {}
     if (typeof host.mediaLength === 'number' && host.mediaLength > 0) return true;
     const root = host.shadowRoot;
     if (!root) return false;
@@ -171,100 +116,100 @@
   }
 
   /**
-   * Reddit CSP blocks eval/Function and sandboxed File fails addFiles.
-   * Reuse the page script nonce so an inline script can call addFiles in page JS.
+   * Load the cover in page JS (Image + canvas) and call addFiles there.
+   * Avoids Greasemonkey binary/File compartment issues. Uses Reddit's script nonce
+   * so the inline script is allowed by CSP.
    */
-  function attachViaNonceScript(b64, name, type) {
+  function attachCoverInPage(imageUrl) {
     const nonce = readPageNonce();
     if (!nonce) {
       return Promise.reject(new Error('Could not read Reddit script nonce'));
     }
 
     const eventName = 'pkgd-cover-done-' + Date.now();
-    const holderId = 'pkgd-cover-b64-' + Date.now();
+    const url = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now();
 
     return new Promise((resolve, reject) => {
-      const holder = document.createElement('textarea');
-      holder.id = holderId;
-      holder.style.display = 'none';
-      holder.value = b64;
-      document.documentElement.appendChild(holder);
-
-      const cleanup = () => {
-        try {
-          holder.remove();
-        } catch (_) {}
-        try {
-          script.remove();
-        } catch (_) {}
-      };
-
       const timer = setTimeout(() => {
         window.removeEventListener(eventName, onDone);
-        cleanup();
-        reject(new Error('Nonce script timed out'));
-      }, 8000);
+        reject(new Error('Page cover attach timed out'));
+      }, 20000);
 
       function onDone(ev) {
         clearTimeout(timer);
         window.removeEventListener(eventName, onDone);
-        cleanup();
+        try {
+          script.remove();
+        } catch (_) {}
         const detail = ev.detail || {};
         if (detail.error) reject(new Error(detail.error));
-        else if (!detail.ok) reject(new Error('addFiles returned false from page script'));
-        else resolve(detail);
+        else if (!detail.ok) {
+          reject(
+            new Error(
+              'Cover did not stick (ctrl=' +
+                detail.afterCtrl +
+                ', preview=' +
+                detail.hasRemove +
+                ')'
+            )
+          );
+        } else resolve(detail);
       }
 
       window.addEventListener(eventName, onDone);
 
       const script = document.createElement('script');
       script.nonce = nonce;
+      // Keep this self-contained page JS. No userscript APIs.
       script.textContent =
-        '(function(){try{' +
-        'var b64=document.getElementById("' +
-        holderId +
-        '").value;' +
-        'var name=' +
-        JSON.stringify(name) +
+        '(async function(){' +
+        'var eventName=' +
+        JSON.stringify(eventName) +
         ';' +
-        'var type=' +
-        JSON.stringify(type) +
+        'function done(detail){window.dispatchEvent(new CustomEvent(eventName,{detail:detail}));}' +
+        'try{' +
+        'var url=' +
+        JSON.stringify(url) +
         ';' +
-        'var bin=atob(b64);' +
-        'var arr=new Uint8Array(bin.length);' +
-        'for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);' +
-        'var file=new File([arr],name,{type:type});' +
+        'var img=new Image();' +
+        'img.crossOrigin="anonymous";' +
+        'await new Promise(function(res,rej){img.onload=res;img.onerror=function(){rej(new Error("Cover image failed to load"));};img.src=url;});' +
+        'if(!img.naturalWidth)throw new Error("Cover image has no dimensions");' +
+        'var c=document.createElement("canvas");' +
+        'c.width=img.naturalWidth;c.height=img.naturalHeight;' +
+        'c.getContext("2d").drawImage(img,0,0);' +
+        'var blob=await new Promise(function(res,rej){c.toBlob(function(b){b?res(b):rej(new Error("toBlob failed"));},"image/png");});' +
+        'var file=new File([blob],"weekly-cover.png",{type:"image/png"});' +
         'var host=document.querySelector("r-post-media-input#post-composer_media")||document.querySelector("r-post-media-input");' +
         'if(!host||typeof host.addFiles!=="function")throw new Error("r-post-media-input.addFiles missing");' +
-        'if(typeof host.clear==="function"&&host.mediaLength>0){try{host.clear();}catch(e){}}' +
-        'var before=typeof host.mediaLength==="number"?host.mediaLength:0;' +
+        'host.scrollIntoView({block:"center",behavior:"instant"});' +
+        'var before=host._mediaController?host._mediaController.media.length:0;' +
+        'if(before>0&&typeof host.clear==="function"){try{host.clear();}catch(e){} await new Promise(function(r){setTimeout(r,400);}); before=host._mediaController?host._mediaController.media.length:0;}' +
         'var ret=host.addFiles([file]);' +
-        'var after=typeof host.mediaLength==="number"?host.mediaLength:before;' +
-        'var ok=ret===true||after>before;' +
-        'window.dispatchEvent(new CustomEvent("' +
-        eventName +
-        '",{detail:{ok:ok,before:before,after:after}}));' +
-        '}catch(e){window.dispatchEvent(new CustomEvent("' +
-        eventName +
-        '",{detail:{error:String(e&&e.message?e.message:e)}}));}})();';
+        'var ready=false; var afterCtrl=0; var hasRemove=false;' +
+        'for(var i=0;i<40;i++){' +
+        'await new Promise(function(r){setTimeout(r,250);});' +
+        'afterCtrl=host._mediaController?host._mediaController.media.length:0;' +
+        'hasRemove=((host.shadowRoot&&host.shadowRoot.textContent)||"").toLowerCase().indexOf("remove media")!==-1;' +
+        'var hasBlob=[].slice.call((host.shadowRoot&&host.shadowRoot.querySelectorAll("img"))||[]).some(function(im){return (im.src||"").indexOf("blob:")===0;});' +
+        'if(afterCtrl>before||hasRemove||hasBlob){ready=true;break;}' +
+        '}' +
+        'done({ok:ready,ret:!!ret,before:before,afterCtrl:afterCtrl,hasRemove:hasRemove,bytes:blob.size,w:img.naturalWidth,h:img.naturalHeight});' +
+        '}catch(e){done({error:String(e&&e.message?e.message:e)});}' +
+        '})();';
 
       document.documentElement.appendChild(script);
     });
   }
 
   async function attachCoverAsImageMedia(imageUrl, setStatus) {
-    setStatus('Loading cover…');
-    const { buf, type, name, bytes } = await loadCoverBuffer(imageUrl);
-    console.log('[PakGameDev]', VERSION, 'cover bytes', bytes);
-
     setStatus('Finding uploader…');
     const host = await waitFor(getMediaHost, 'r-post-media-input');
     host.scrollIntoView({ block: 'center', behavior: 'instant' });
-    await sleep(300);
+    await sleep(200);
 
     setStatus('Attaching cover…');
-    const b64 = arrayBufferToBase64(buf);
-    const result = await attachViaNonceScript(b64, name, type);
+    const result = await attachCoverInPage(imageUrl);
     console.log('[PakGameDev]', VERSION, 'attach result', result);
 
     await waitFor(() => mediaPreviewReady(host), 'media preview after addFiles', {
