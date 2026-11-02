@@ -1,53 +1,52 @@
 // ==UserScript==
 // @name        PakGameDev Weekly Game Post
 // @namespace   https://pakgamedev.com/gameclub
-// @version     7.3
-// @description Fills weekly Game Dev Club Reddit IMAGE post (cover drop onto r-post-media-input)
+// @version     7.4
+// @description Fills weekly Game Dev Club Reddit IMAGE post via r-post-media-input.addFiles
 // @author      PakGameDev
 // @match       https://www.reddit.com/r/PakGameDev/submit*
 // @grant       GM.xmlHttpRequest
 // @connect     pakgamedev.com
 // @connect     github.com
 // @connect     raw.githubusercontent.com
+// @connect     shared.fastly.steamstatic.com
 // @run-at      document-idle
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  const VERSION = '7.3';
+  const VERSION = '7.4';
   const POST_JSON =
     'https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  /** Greasemonkey 4: GM.xmlHttpRequest (cross-origin; page XHR is blocked). */
+  function gmXhr() {
+    if (typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function') {
+      return GM.xmlHttpRequest;
+    }
+    if (typeof GM_xmlhttpRequest === 'function') return GM_xmlhttpRequest;
+    return null;
+  }
+
   function gmRequest(details) {
-    const req =
-      typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function'
-        ? GM.xmlHttpRequest
-        : typeof GM_xmlhttpRequest === 'function'
-          ? GM_xmlhttpRequest
-          : null;
+    const req = gmXhr();
     if (!req) {
       return Promise.reject(
         new Error(
-          'GM.xmlHttpRequest missing. In Greasemonkey, edit the script header so it has: // @grant GM.xmlHttpRequest (and remove @grant none). Then reinstall.'
+          'GM.xmlHttpRequest missing. Script header must include @grant GM.xmlHttpRequest and must NOT include @grant none. Delete and reinstall the local .user.js.'
         )
       );
     }
     return new Promise((resolve, reject) => {
       req({
-        ...details,
+        method: details.method || 'GET',
+        url: details.url,
+        headers: details.headers,
+        responseType: details.responseType,
+        overrideMimeType: details.overrideMimeType,
         onload: (res) => resolve(res),
-        onerror: (res) =>
-          reject(
-            new Error(
-              'GM request failed' +
-                (res && res.status ? ' HTTP ' + res.status : '') +
-                ' for ' +
-                details.url
-            )
-          ),
+        onerror: () => reject(new Error('GM request failed for ' + details.url)),
         ontimeout: () => reject(new Error('GM request timeout for ' + details.url)),
       });
     });
@@ -72,7 +71,6 @@
 
   async function gmJson(url) {
     const res = await gmRequest({
-      method: 'GET',
       url,
       headers: { Accept: 'application/json' },
     });
@@ -86,9 +84,22 @@
     }
   }
 
-  async function loadCoverFile(url) {
+  function toArrayBuffer(res) {
+    if (res.response instanceof ArrayBuffer && res.response.byteLength) {
+      return res.response;
+    }
+    if (typeof res.responseText === 'string' && res.responseText.length) {
+      const s = res.responseText;
+      const buf = new ArrayBuffer(s.length);
+      const view = new Uint8Array(buf);
+      for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xff;
+      return buf;
+    }
+    return null;
+  }
+
+  async function loadCoverBuffer(url) {
     const res = await gmRequest({
-      method: 'GET',
       url,
       responseType: 'arraybuffer',
       overrideMimeType: 'text/plain; charset=x-user-defined',
@@ -96,141 +107,145 @@
     if (res.status < 200 || res.status >= 300) {
       throw new Error('Cover HTTP ' + res.status + ' for ' + url);
     }
-    const buf = res.response;
-    if (!buf || !(buf instanceof ArrayBuffer) || buf.byteLength < 100) {
-      throw new Error('Cover download empty/invalid (' + (buf && buf.byteLength) + ' bytes)');
+    const buf = toArrayBuffer(res);
+    if (!buf || buf.byteLength < 100) {
+      throw new Error(
+        'Cover download empty/invalid (' +
+          (buf ? buf.byteLength : 0) +
+          ' bytes). Greasemonkey may have blocked the request.'
+      );
     }
     const lower = url.toLowerCase();
-    const type = lower.includes('.jpg') || lower.includes('.jpeg')
-      ? 'image/jpeg'
-      : lower.includes('.webp')
-        ? 'image/webp'
-        : 'image/png';
+    const type =
+      lower.includes('.jpg') || lower.includes('.jpeg')
+        ? 'image/jpeg'
+        : lower.includes('.webp')
+          ? 'image/webp'
+          : 'image/png';
     const name =
       type === 'image/jpeg'
         ? 'weekly-cover.jpg'
         : type === 'image/webp'
           ? 'weekly-cover.webp'
           : 'weekly-cover.png';
-    return new File([buf], name, { type });
+    return { buf, type, name, bytes: buf.byteLength };
   }
 
-  function makeDataTransfer(file) {
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    return dt;
-  }
-
-  /** Force dataTransfer onto the event; constructor args are often ignored. */
-  function dispatchDrop(el, file) {
-    const dt = makeDataTransfer(file);
-    for (const type of ['dragenter', 'dragover', 'drop']) {
-      let ev;
-      try {
-        ev = new DragEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          composed: true,
-        });
-      } catch (_) {
-        ev = new Event(type, { bubbles: true, cancelable: true, composed: true });
-      }
-      try {
-        Object.defineProperty(ev, 'dataTransfer', {
-          configurable: true,
-          get: () => dt,
-        });
-      } catch (_) {}
-      el.dispatchEvent(ev);
+  function arrayBufferToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    const chunk = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(
+        null,
+        bytes.subarray(i, Math.min(i + chunk, bytes.length))
+      );
     }
+    return btoa(binary);
   }
 
-  function assignInputFiles(input, file) {
-    const dt = makeDataTransfer(file);
-    try {
-      input.files = dt.files;
-    } catch (_) {}
-    try {
-      Object.defineProperty(input, 'files', {
-        configurable: true,
-        get: () => dt.files,
-      });
-    } catch (_) {}
-    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+  function getMediaHost() {
+    return (
+      document.querySelector('r-post-media-input#post-composer_media') ||
+      document.querySelector('r-post-media-input')
+    );
   }
 
-  function mediaAttached(root) {
+  function mediaPreviewReady(host) {
+    if (!host) return false;
+    if (typeof host.mediaLength === 'number' && host.mediaLength > 0) return true;
+    const root = host.shadowRoot;
     if (!root) return false;
     if ([...root.querySelectorAll('img')].some((i) => i.src?.startsWith('blob:'))) {
       return true;
     }
     const text = (root.textContent || '').toLowerCase();
-    if (text.includes('remove media') || text.includes('edit media')) return true;
-    const input = root.querySelector('input.file-input, input[type=file]');
-    return !!(input && input.files && input.files.length);
+    return text.includes('remove media');
+  }
+
+  /**
+   * Reddit accepts media through r-post-media-input.addFiles(), not synthetic drops.
+   * Greasemonkey File objects are sandboxed, so build the File in page JS.
+   */
+  function addFilesInPageContext(b64, name, type) {
+    const pageSrc =
+      'var bin=atob(b64),arr=new Uint8Array(bin.length);' +
+      'for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);' +
+      'var file=new File([arr],name,{type:type});' +
+      'var host=document.querySelector("r-post-media-input#post-composer_media")||document.querySelector("r-post-media-input");' +
+      'if(!host||typeof host.addFiles!=="function")throw new Error("r-post-media-input.addFiles missing");' +
+      'var before=typeof host.mediaLength==="number"?host.mediaLength:0;' +
+      'var ret=host.addFiles([file]);' +
+      'var after=typeof host.mediaLength==="number"?host.mediaLength:before;' +
+      'if(!(ret===true||after>before))throw new Error("addFiles returned false (file rejected?)");' +
+      'return true;';
+
+    try {
+      if (typeof unsafeWindow !== 'undefined' && unsafeWindow.Function) {
+        const fn = new unsafeWindow.Function('b64', 'name', 'type', pageSrc);
+        fn(b64, name, type);
+        return { ok: true, error: null };
+      }
+    } catch (e) {
+      console.warn('[PakGameDev] page-context addFiles failed', e);
+      return {
+        ok: false,
+        error: String(e && e.message ? e.message : e),
+      };
+    }
+
+    // Same-context fallback (Tampermonkey and similar).
+    try {
+      const host = getMediaHost();
+      if (!host || typeof host.addFiles !== 'function') {
+        return { ok: false, error: 'addFiles unavailable in userscript context' };
+      }
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], name, { type });
+      const before = host.mediaLength || 0;
+      const ret = host.addFiles([file]);
+      const ok = ret === true || (host.mediaLength || 0) > before;
+      return {
+        ok,
+        error: ok ? null : 'addFiles returned false (file rejected?)',
+      };
+    } catch (e) {
+      return { ok: false, error: String(e && e.message ? e.message : e) };
+    }
   }
 
   async function attachCoverAsImageMedia(imageUrl, setStatus) {
     setStatus('Loading cover…');
-    const file = await loadCoverFile(imageUrl);
-    console.log('[PakGameDev]', VERSION, 'cover bytes', file.size);
+    const { buf, type, name, bytes } = await loadCoverBuffer(imageUrl);
+    console.log('[PakGameDev]', VERSION, 'cover bytes', bytes);
 
     setStatus('Finding uploader…');
-    const host = await waitFor(
-      () =>
-        document.querySelector('r-post-media-input#post-composer_media') ||
-        document.querySelector('r-post-media-input'),
-      'r-post-media-input (scroll down if needed: media dropzone under the body)'
-    );
+    const host = await waitFor(getMediaHost, 'r-post-media-input');
     host.scrollIntoView({ block: 'center', behavior: 'instant' });
-    await sleep(350);
+    await sleep(300);
 
-    const root = host.shadowRoot;
-    if (!root) throw new Error('r-post-media-input has no shadowRoot');
-
-    const dropTarget =
-      root.querySelector('#fileInputInnerWrapper') ||
-      root.querySelector('#inputInfo') ||
-      root.querySelector('button.upload-media') ||
-      host;
-    const fileInput = root.querySelector('input.file-input, input[type="file"]');
+    if (typeof host.clear === 'function' && mediaPreviewReady(host)) {
+      try {
+        host.clear();
+        await sleep(400);
+      } catch (_) {}
+    }
 
     setStatus('Attaching cover…');
+    const b64 = arrayBufferToBase64(buf);
+    const result = addFilesInPageContext(b64, name, type);
+    console.log('[PakGameDev]', VERSION, 'addFiles result', result);
 
-    dispatchDrop(dropTarget, file);
-    await sleep(500);
-    if (mediaAttached(root)) return;
-
-    if (fileInput) {
-      assignInputFiles(fileInput, file);
-      await sleep(500);
-      if (mediaAttached(root)) return;
+    if (!result.ok) {
+      throw new Error(result.error || 'addFiles failed');
     }
 
-    dispatchDrop(host, file);
-    await sleep(500);
-    if (mediaAttached(root)) return;
-
-    const uploadBtn = root.querySelector('#device-upload-button, button.upload-media');
-    if (uploadBtn && fileInput) {
-      uploadBtn.click();
-      await sleep(200);
-      assignInputFiles(fileInput, file);
-      await sleep(700);
-      if (mediaAttached(root)) return;
-    }
-
-    try {
-      await waitFor(() => mediaAttached(root), 'media preview', {
-        timeout: 4000,
-        interval: 250,
-      });
-    } catch (_) {
-      throw new Error(
-        'Cover did not stick on the IMAGE media slot. Confirm URL has type=IMAGE and you can see “Drag and Drop or upload media” under the body.'
-      );
-    }
+    await waitFor(() => mediaPreviewReady(host), 'media preview after addFiles', {
+      timeout: 8000,
+      interval: 250,
+    });
   }
 
   function getTitleTextarea() {
@@ -332,12 +347,17 @@
       } catch (err) {
         console.error('[PakGameDev]', err);
         setStatus('Failed - see console');
-        alert('[PakGameDev v' + VERSION + '] ' + (err && err.message ? err.message : err));
+        alert(
+          '[PakGameDev v' +
+            VERSION +
+            '] ' +
+            (err && err.message ? err.message : err)
+        );
       }
 
       setTimeout(() => {
         btn.textContent = 'Weekly Game Post v' + VERSION;
-      }, 5000);
+      }, 6000);
     });
 
     document.body.appendChild(btn);
