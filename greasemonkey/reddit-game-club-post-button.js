@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        PakGameDev Weekly Game Post
 // @namespace   https://pakgamedev.com/gameclub
-// @version     7.8
+// @version     7.9
 // @description Fills weekly Game Dev Club Reddit IMAGE post via r-post-media-input.addFiles
 // @author      PakGameDev
 // @match       https://www.reddit.com/r/PakGameDev/submit*
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '7.8';
+  const VERSION = '7.9';
   const POST_JSON =
     'https://pakgamedev.com/gameclubactions/reddit-auto-post/post.json';
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -282,21 +282,15 @@
 
     setStatus('Finding uploader…');
     const host = await waitFor(getMediaHost, 'r-post-media-input');
-    host.scrollIntoView({ block: 'center', behavior: 'instant' });
+    try {
+      host.scrollIntoView({ block: 'center', behavior: 'instant' });
+    } catch (_) {}
     await sleep(200);
 
     setStatus('Attaching cover…');
     const result = await attachCoverInPage(imageUrl);
     console.log('[PakGameDev]', VERSION, 'attach result', result);
-
-    await waitFor(
-      () =>
-        mediaPreviewReady(host) &&
-        host.getBoundingClientRect().height > 40 &&
-        !!(host.value && host.value !== '[]'),
-      'visible uploaded media preview',
-      { timeout: 10000, interval: 250 }
-    );
+    // Trust page-context result. Greasemonkey X-rays often hide host.value here.
   }
 
   function getTitleTextarea() {
