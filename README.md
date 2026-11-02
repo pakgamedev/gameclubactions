@@ -68,10 +68,10 @@ LinkedIn Page API access needs a registered legal entity, so LinkedIn stays past
 **Curator share kit** (fewest clicks):
 
 1. Open [outreach/share.html](https://pakgamedev.com/gameclubactions/outreach/share.html) (also linked from the club page as **Share kit**, or run `scripts/open-share-kit.sh`).
-2. Click **LinkedIn: copy + cover + open** (or the matching one-shot for IG).
-3. In the tab that opens: paste, attach the downloaded cover, post.
+2. One caption + one cover for every network. Click **LinkedIn** / **Instagram** / etc. to copy, download cover, and open the composer (Reddit only opens the IMAGE submit page for Greasemonkey).
+3. Paste, attach cover if needed, post.
 
-Edit composer destinations in [`outreach/share-config.json`](outreach/share-config.json) (e.g. point LinkedIn at your Page admin composer URL).
+Edit composer destinations in [`outreach/share-config.json`](outreach/share-config.json).
 
 `scripts/post-linkedin.js` remains for a future day if PakGameDev becomes a registered entity and LinkedIn approves Community Management.
 

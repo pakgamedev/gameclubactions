@@ -16,8 +16,6 @@
       --text: #e8eef8;
       --muted: #93a4bf;
       --green: #22c55e;
-      --green-dim: #16a34a;
-      --warn: #fbbf24;
     }
     * { box-sizing: border-box; }
     body {
@@ -31,7 +29,7 @@
         var(--bg);
     }
     main {
-      width: min(1080px, calc(100% - 2rem));
+      width: min(980px, calc(100% - 2rem));
       margin: 0 auto;
       padding: 1.5rem 0 3rem;
     }
@@ -58,7 +56,7 @@
     }
     .grid {
       display: grid;
-      grid-template-columns: minmax(240px, 360px) 1fr;
+      grid-template-columns: minmax(220px, 340px) 1fr;
       gap: 1.25rem;
       align-items: start;
     }
@@ -72,7 +70,6 @@
       padding: 1rem;
     }
     .cover-wrap {
-      position: relative;
       overflow: hidden;
       border-radius: 14px;
       border: 1px solid var(--line);
@@ -85,11 +82,11 @@
       object-fit: cover;
       display: block;
     }
-    .cover-actions {
+    .stack { display: grid; gap: 0.75rem; }
+    .row {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
-      margin-top: 0.85rem;
     }
     button, .btn {
       appearance: none;
@@ -104,7 +101,6 @@
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 0.4rem;
       color: #04110a;
       background: var(--green);
     }
@@ -114,37 +110,16 @@
       border-color: var(--line);
     }
     button:hover, .btn:hover { filter: brightness(1.08); }
-    button:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-      filter: none;
-    }
-    .channels { display: grid; gap: 0.75rem; }
-    .channel {
-      display: grid;
-      gap: 0.65rem;
-      padding: 0.9rem;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,0.02);
-    }
-    .channel-top {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .channel h2 {
+    h2 {
       margin: 0;
-      font-size: 1.15rem;
+      font-size: 1rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      color: var(--muted);
     }
-    .channel-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
     textarea {
       width: 100%;
-      min-height: 7.5rem;
+      min-height: 14rem;
       resize: vertical;
       border-radius: 12px;
       border: 1px solid var(--line);
@@ -154,6 +129,12 @@
       font-family: "IBM Plex Mono", monospace;
       font-size: 0.8rem;
       line-height: 1.45;
+    }
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.4;
     }
     .toast {
       position: fixed;
@@ -183,18 +164,6 @@
       font-family: "IBM Plex Mono", monospace;
       font-size: 0.85rem;
     }
-    .hint {
-      margin: 0.85rem 0 0;
-      color: var(--muted);
-      font-size: 0.95rem;
-      line-height: 1.4;
-    }
-    .one-shot {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-    }
   </style>
 </head>
 <body>
@@ -209,32 +178,39 @@
 
     <div id="error" class="error" hidden></div>
 
-    <div class="one-shot" id="oneShot" hidden>
-      <button type="button" id="doLinkedIn">LinkedIn: copy + cover + open</button>
-      <button type="button" id="doIg" class="secondary">IG/TikTok: copy + cover + open IG</button>
-      <button type="button" id="downloadCover" class="secondary">Download cover only</button>
-    </div>
-
     <div class="grid" id="kit" hidden>
-      <section class="panel">
+      <section class="panel stack">
         <div class="cover-wrap">
           <img id="cover" alt="Weekly Game Dev Club cover" />
         </div>
-        <div class="cover-actions">
+        <div class="row">
+          <button type="button" id="copyCaption">Copy caption</button>
+          <button type="button" class="secondary" id="downloadCover">Download cover</button>
+        </div>
+        <div class="row">
           <a class="btn secondary" id="coverOpen" href="#" target="_blank" rel="noopener">Open cover</a>
           <button type="button" class="secondary" id="copyCoverUrl">Copy cover URL</button>
         </div>
-        <p class="hint">Flow: hit a one-shot above, paste into the composer that opens, attach the downloaded cover if the site did not keep it.</p>
       </section>
 
-      <section class="channels panel" id="channels"></section>
+      <section class="panel stack">
+        <h2>Caption (all networks)</h2>
+        <textarea id="caption" readonly></textarea>
+
+        <h2>Open composer</h2>
+        <div class="row" id="openers"></div>
+
+        <p class="hint">
+          Paste channels: copy caption, download cover, open the site, attach cover, paste.
+          Reddit: open submit, then use the Greasemonkey <strong>Weekly Game Post</strong> button.
+        </p>
+      </section>
     </div>
   </main>
 
   <div class="toast" id="toast" role="status"></div>
 
   <script>
-    const COVER_FALLBACK = './weekly-cover.png';
     const COVER_CDN = 'https://pakgamedev.com/gameclubactions/outreach/weekly-cover.png';
 
     const state = {
@@ -243,12 +219,11 @@
         instagramUrl: 'https://www.instagram.com/',
         tiktokUploadUrl: 'https://www.tiktok.com/tiktokstudio/upload',
         youtubeStudioUrl: 'https://studio.youtube.com/',
+        redditSubmitUrl: 'https://www.reddit.com/r/PakGameDev/submit/?type=IMAGE',
       },
-      linkedin: '',
-      short: '',
-      youtube: '',
+      caption: '',
       gameName: '',
-      coverUrl: COVER_FALLBACK,
+      coverUrl: './weekly-cover.png',
       coverCdn: COVER_CDN,
     };
 
@@ -279,45 +254,22 @@
       window.open(url, '_blank', 'noopener,noreferrer');
     }
 
-    async function oneShot({ text, open }) {
-      await copyText(text);
-      downloadCover();
-      openUrl(open);
-      toast('Copied. Cover download started. Composer opened.');
-    }
-
-    function channelCard({ id, title, text, openUrl: target, openLabel }) {
-      const wrap = document.createElement('article');
-      wrap.className = 'channel';
-      wrap.innerHTML = `
-        <div class="channel-top">
-          <h2>${title}</h2>
-          <div class="channel-actions">
-            <button type="button" data-copy="${id}">Copy</button>
-            <button type="button" class="secondary" data-go="${id}">${openLabel}</button>
-            <button type="button" class="secondary" data-all="${id}">Copy + cover + open</button>
-          </div>
-        </div>
-        <textarea readonly id="text-${id}"></textarea>
-      `;
-      wrap.querySelector(`#text-${id}`).value = text;
-      wrap.querySelector(`[data-copy="${id}"]`).addEventListener('click', async () => {
-        await copyText(text);
-        toast(`${title} caption copied`);
+    function addOpener(label, url, { primary = false, prep = false } = {}) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      if (!primary) btn.classList.add('secondary');
+      btn.addEventListener('click', async () => {
+        if (prep) {
+          await copyText(state.caption);
+          downloadCover();
+          openUrl(url);
+          toast('Caption copied. Cover download started. Composer opened.');
+          return;
+        }
+        openUrl(url);
       });
-      wrap.querySelector(`[data-go="${id}"]`).addEventListener('click', () => openUrl(target));
-      wrap.querySelector(`[data-all="${id}"]`).addEventListener('click', () =>
-        oneShot({ text, open: target })
-      );
-      return wrap;
-    }
-
-    function shortFromBody(body) {
-      return String(body || '')
-        .replace(/\n{2,}/g, '\n')
-        .replace(/This week's Discord thread:/g, 'Discuss:')
-        .replace(/^Join Discord:.*$/m, '')
-        .trim();
+      $('openers').appendChild(btn);
     }
 
     async function loadJson(path) {
@@ -348,9 +300,7 @@
         const body = (linkedin && linkedin.text) || (reddit && reddit.body) || '';
         if (!body) throw new Error('No linkedin.json / post.json body found. Run Monday outreach first.');
 
-        state.linkedin = body.trim();
-        state.short = shortFromBody(body);
-        state.youtube = state.short;
+        state.caption = body.trim();
         state.gameName =
           (linkedin && linkedin.game_name) ||
           (reddit && reddit.game_name) ||
@@ -361,7 +311,8 @@
           COVER_CDN;
         state.coverUrl = './weekly-cover.png';
 
-        $('subtitle').textContent = state.gameName + ' · paste kit for LinkedIn / IG / TikTok / YouTube';
+        $('subtitle').textContent = state.gameName + ' · one caption, one cover';
+        $('caption').value = state.caption;
         $('cover').src = state.coverUrl + '?cb=' + Date.now();
         $('cover').onerror = () => {
           $('cover').onerror = null;
@@ -371,41 +322,14 @@
         };
         $('coverOpen').href = state.coverUrl;
 
-        const channels = $('channels');
-        channels.innerHTML = '';
-        channels.append(
-          channelCard({
-            id: 'linkedin',
-            title: 'LinkedIn',
-            text: state.linkedin,
-            openUrl: state.config.linkedinComposeUrl,
-            openLabel: 'Open LinkedIn',
-          }),
-          channelCard({
-            id: 'ig',
-            title: 'Instagram',
-            text: state.short,
-            openUrl: state.config.instagramUrl,
-            openLabel: 'Open Instagram',
-          }),
-          channelCard({
-            id: 'tiktok',
-            title: 'TikTok',
-            text: state.short,
-            openUrl: state.config.tiktokUploadUrl,
-            openLabel: 'Open TikTok upload',
-          }),
-          channelCard({
-            id: 'youtube',
-            title: 'YouTube',
-            text: state.youtube,
-            openUrl: state.config.youtubeStudioUrl,
-            openLabel: 'Open YouTube Studio',
-          })
-        );
+        $('openers').innerHTML = '';
+        addOpener('LinkedIn', state.config.linkedinComposeUrl, { primary: true, prep: true });
+        addOpener('Instagram', state.config.instagramUrl, { prep: true });
+        addOpener('TikTok', state.config.tiktokUploadUrl, { prep: true });
+        addOpener('YouTube', state.config.youtubeStudioUrl, { prep: true });
+        addOpener('Reddit IMAGE', state.config.redditSubmitUrl);
 
         $('kit').hidden = false;
-        $('oneShot').hidden = false;
       } catch (err) {
         $('error').hidden = false;
         $('error').textContent = String(err && err.message ? err.message : err);
@@ -413,12 +337,10 @@
       }
     }
 
-    $('doLinkedIn').addEventListener('click', () =>
-      oneShot({ text: state.linkedin, open: state.config.linkedinComposeUrl })
-    );
-    $('doIg').addEventListener('click', () =>
-      oneShot({ text: state.short, open: state.config.instagramUrl })
-    );
+    $('copyCaption').addEventListener('click', async () => {
+      await copyText(state.caption);
+      toast('Caption copied');
+    });
     $('downloadCover').addEventListener('click', () => {
       downloadCover();
       toast('Cover download started');
