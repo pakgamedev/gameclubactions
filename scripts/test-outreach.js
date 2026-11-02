@@ -69,7 +69,7 @@ function buildOutreach(game, threadUrl) {
     `This week's Discord thread: ${threadUrl}`,
     `Join Discord: ${DISCORD_INVITE}`,
     `More: ${CLUB_URL}`,
-  ].join('\n');
+  ].join('\n\n');
 
   const shortCaption = [
     weeklyHook,
